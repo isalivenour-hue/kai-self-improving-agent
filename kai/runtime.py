@@ -6,9 +6,11 @@ import sqlite3
 import sys
 import time
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+from kai.awareness import build_awareness_report, run_awareness_benchmark
 from kai.config import KaiConfig
 from kai.database import SCHEMA_VERSION, Database
 from kai.engineering import EngineeringCoordinator
@@ -1759,6 +1761,59 @@ class KaiRuntime:
             "self_model_history_count": self.database.self_model_version_count(),
             "current_predictive_models": self.database.list_predictive_models(),
         }
+
+    def awareness_status(self) -> dict:
+        """Build a bounded awareness report from a fresh observation and durable records."""
+        runtime_status = self.status()
+        version = self.database.get_self_model_version()
+        if version is None:
+            raise KaiError("Awareness report requires a persisted self-model version.")
+
+        task_status_counts = dict(
+            Counter(
+                task["status"]
+                for task in self.database.list_engineering_tasks(limit=1000)
+            )
+        )
+        prediction_status_counts = dict(
+            Counter(
+                prediction["status"]
+                for prediction in self.database.list_predictions(limit=1000)
+            )
+        )
+        executions = self.database.list_experiment_executions(limit=1000)
+        recent_failure_count = sum(
+            execution["execution_status"] in {"FAILED", "UNKNOWN", "ABORTED"}
+            for execution in executions
+        ) + len(version["model"].get("recent_runtime_errors", []))
+        benchmark_events = self.database.recent_events(
+            limit=1, event_type="AWARENESS_BENCHMARK_COMPLETED"
+        )
+        return build_awareness_report(
+            version,
+            runtime_status,
+            database_integrity=self.database.integrity_check(),
+            task_status_counts=task_status_counts,
+            prediction_status_counts=prediction_status_counts,
+            recent_failure_count=recent_failure_count,
+            latest_benchmark=benchmark_events[0] if benchmark_events else None,
+        )
+
+    def awareness_benchmark(self) -> dict:
+        """Run and persist deterministic awareness contract fixtures."""
+        self.database.initialize()
+        result = run_awareness_benchmark()
+        event_id = self.database.record_event(
+            "AWARENESS_BENCHMARK_COMPLETED",
+            (
+                f"Operational awareness contract benchmark completed "
+                f"with {result['status']}."
+            ),
+            result,
+            source="kai.awareness",
+            epistemic_status="OBSERVATION",
+        )
+        return {"event_id": event_id, **result}
 
     def inspect_improvement(self, opportunity_id: int) -> dict:
         opportunity = self.database.get_improvement_opportunity(opportunity_id)

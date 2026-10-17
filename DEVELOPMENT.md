@@ -9,7 +9,26 @@ PYTHONPATH=. python3 -m unittest discover -s tests -v
 PYTHONPATH=. python3 -m kai --help
 PYTHONPATH=. python3 -m kai llm status
 PYTHONPATH=. python3 -m kai benchmark cpu-predictor
+PYTHONPATH=. python3 -m kai awareness status
+PYTHONPATH=. python3 -m kai awareness benchmark
 ```
+
+### Operational awareness
+
+`kai awareness status` collects a fresh environment/self-model snapshot using
+the existing runtime status path and reports values with source, timestamp,
+epistemic state, and an initial five-minute freshness limit. The status command
+therefore appends the usual environment snapshot and self-model history record.
+It does not run tests, discovered tools, model generation, GPU workloads, or
+candidate code. User-authored goal/task/prediction contents, raw paths, and
+secrets are omitted.
+
+`kai awareness benchmark` evaluates eleven deterministic contract fixtures for
+capability evidence, claim discipline, and freshness, then stores the result
+as an append-only event. The reported 11-case accuracy is fixture conformance,
+not measured live-system awareness accuracy, statistical significance, or
+confidence calibration. The pre-change baseline had no matching awareness
+protocol; it must be recorded as not measurable rather than assigned a score.
 
 ### Evidence-driven benchmark
 

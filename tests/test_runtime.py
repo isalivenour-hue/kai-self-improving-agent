@@ -267,6 +267,33 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(report["self_model"]["identity"]["identity_id"], report["identity"]["identity_id"])
         self.assertEqual(report["known_state"]["environment_snapshot_count"], 1)
 
+    def test_awareness_status_is_provenance_bearing_and_keeps_unverified_state_unknown(self):
+        report = self.runtime.awareness_status()
+        self.assertEqual(report["self_model"]["schema_version"], SCHEMA_VERSION)
+        self.assertEqual(report["fields"]["software.version"]["value"], "0.1.0")
+        self.assertEqual(
+            report["fields"]["database.schema_version"]["source"],
+            "SQLite schema_info",
+        )
+        self.assertEqual(report["fields"]["tests.execution"]["state"], "UNKNOWN")
+        self.assertEqual(
+            report["capabilities"]["local_model_generation"]["status"],
+            "IMPLEMENTED_UNVERIFIED",
+        )
+        self.assertEqual(report["evaluation"]["database_integrity"], "PASS")
+        self.assertEqual(report["evaluation"]["awareness_benchmark"]["status"], "UNKNOWN")
+        gaps = {gap["id"]: gap for gap in report["knowledge_gaps"]}
+        self.assertIn("test-suite-execution-unverified", gaps)
+        self.assertIn("local-model-generation-unverified", gaps)
+        self.assertIn("gpu-inference-usability-unknown", gaps)
+        self.assertIn("awareness-benchmark-not-passed", gaps)
+        self.assertTrue(gaps["test-suite-execution-unverified"]["links"])
+        self.assertFalse(report["privacy"]["secrets_included"])
+        self.assertTrue(all(
+            field["source"] and field["observed_at"]
+            for field in report["fields"].values()
+        ))
+
     def test_report_values_are_serializable(self):
         self.runtime.boot()
         json.dumps(self.runtime.status())

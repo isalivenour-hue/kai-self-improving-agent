@@ -1,5 +1,8 @@
 # KAI 0.007
 
+The package's Python version is `0.1.0`; the KAI 0.007–0.010 labels below are
+project milestone labels, not the package version.
+
 KAI extends a small local foundation for a persistent artificial cognitive
 architecture. It maintains a stable identity, inspects its current environment,
 records events and epistemically labeled memory, stores simple goals, and
@@ -48,6 +51,14 @@ units, finite measurements, sample completeness, and explicit outcomes from
 plugins or generated code. This is an evaluation-framework improvement, not
 evidence that KAI's predictor generalizes beyond the fixed synthetic replay.
 
+## Primary mission: operational self-awareness
+
+KAI prioritizes an accurate, evidence-grounded model of its own state,
+environment, capabilities, limitations, uncertainty, and errors. The mission
+is operational rather than a claim of subjective consciousness. The initial
+awareness report and deterministic fixture benchmark are documented in
+[docs/CORE_AWARENESS_MISSION.md](./docs/CORE_AWARENESS_MISSION.md).
+
 This milestone is not a general intelligence, autonomous agent, or claim of
 consciousness. Models are used only after explicit commands; generated changes
 remain disposable candidates and are never automatically deployed. Cloud
@@ -78,6 +89,8 @@ python3 -m kai experiments
 python3 -m kai learn cpu-baseline
 python3 -m kai predict history
 python3 -m kai self status
+python3 -m kai awareness status
+python3 -m kai awareness benchmark
 python3 -m kai self doctor
 python3 -m kai self capabilities
 python3 -m kai improvements list

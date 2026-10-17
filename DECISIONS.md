@@ -8,3 +8,4 @@
 | [ADR-0004](./docs/adr/0004-deterministic-experiment-framework.md) | Separate versioned experiment definitions from executions, results, and evaluations | Accepted |
 | [ADR-0005](./docs/adr/0005-self-model-and-recursive-improvement.md) | Persist a provenance-bearing self-model and evaluate isolated candidates without deployment | Accepted |
 | [ADR-0006](./docs/adr/0006-disposable-candidate-workspaces.md) | Use disposable snapshots and a fixed, network-isolated runner for candidate evaluation | Accepted |
+| [ADR-0007](./docs/adr/0007-operational-self-awareness-priority.md) | Make evidence-grounded operational self-awareness KAI's primary architectural priority | Accepted |

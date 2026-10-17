@@ -139,6 +139,7 @@ class CliTests(unittest.TestCase):
             ("self", "weaknesses"),
             ("self", "failures"),
             ("self", "metrics"),
+            ("awareness", "status"),
             ("improvements", "list"),
             ("improvements", "history"),
             ("candidates", "list"),
@@ -147,6 +148,23 @@ class CliTests(unittest.TestCase):
                 result = self.run_kai(*command)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 json.loads(result.stdout)
+
+    def test_awareness_benchmark_cli_persists_result_for_status_report(self):
+        benchmark = self.run_kai("awareness", "benchmark")
+        self.assertEqual(benchmark.returncode, 0, benchmark.stderr)
+        benchmark_result = json.loads(benchmark.stdout)
+        self.assertEqual(benchmark_result["status"], "PASSED")
+        self.assertEqual(benchmark_result["sample_count"], 12)
+
+        status = self.run_kai("awareness", "status")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        report = json.loads(status.stdout)
+        self.assertEqual(
+            report["evaluation"]["awareness_benchmark"]["status"], "PASSED"
+        )
+        self.assertEqual(
+            report["evaluation"]["awareness_benchmark"]["sample_count"], 12
+        )
 
     def test_evaluations_cli_lists_and_shows_baseline_lineage(self):
         database = Database(Path(self.temporary_directory.name) / "kai.sqlite3")

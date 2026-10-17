@@ -51,6 +51,19 @@ def _parser() -> argparse.ArgumentParser:
     self_actions.add_parser("failures", help="show persisted experiment failures")
     self_actions.add_parser("metrics", help="show self-model and improvement metrics")
 
+    awareness = commands.add_parser(
+        "awareness", help="inspect operational self-awareness and its deterministic evaluation"
+    )
+    awareness_actions = awareness.add_subparsers(
+        dest="awareness_action", required=True
+    )
+    awareness_actions.add_parser(
+        "status", help="show a provenance- and freshness-aware operational report"
+    )
+    awareness_actions.add_parser(
+        "benchmark", help="run and persist deterministic awareness contract fixtures"
+    )
+
     llm = commands.add_parser(
         "llm", help="discover, select, route, and query configured model providers"
     )
@@ -494,6 +507,11 @@ def _dispatch(arguments: argparse.Namespace, runtime: KaiRuntime) -> int:
             _json(runtime.self_failures())
         elif action == "metrics":
             _json(runtime.self_metrics())
+    elif command == "awareness":
+        if arguments.awareness_action == "status":
+            _json(runtime.awareness_status())
+        else:
+            _json(runtime.awareness_benchmark())
     elif command == "memory":
         action = arguments.memory_action or "list"
         if action == "add":

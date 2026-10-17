@@ -1,5 +1,31 @@
 # KAI Architecture
 
+## Primary mission: evidence-grounded operational self-awareness
+
+KAI's architecture prioritizes accurate, provenance-bearing awareness of its
+own state, environment, capabilities, limitations, uncertainties, errors, and
+changes over time. The mission is operational and measurable; it is not a claim
+of subjective consciousness. This priority governs new capability selection:
+improve the validity, freshness, evidence coverage, and correction of KAI's
+self-model before adding unrelated autonomy.
+
+KAI already persists environment snapshots, epistemic claims, self-model
+versions, and source-linked observations. `kai.awareness` builds a privacy-safe
+health report from those records and current database/provider summaries, marks
+unknown and stale observations explicitly, and derives a small set of
+evidence-linked gaps. `kai awareness benchmark` evaluates eleven deterministic
+contract fixtures and stores the result in append-only event history. Fixture
+success validates the reporting rules, not the factual accuracy of every
+live-host claim.
+
+The awareness status command uses the existing runtime status capture, which
+persists a fresh environment snapshot and self-model version. It does not
+execute discovered tools, run the test suite or GPU workloads, invoke model
+generation, or authorize actions. Capability availability, permission, and
+test verification remain separate dimensions. See
+[CORE_AWARENESS_MISSION.md](./docs/CORE_AWARENESS_MISSION.md) for semantics,
+benchmark scope, baseline, limitations, and the versioned roadmap.
+
 ## Current boundary
 
 KAI's intended architecture remains:
@@ -310,6 +336,10 @@ retry the measurement.
   comparison, measurement records, bounded experiment orchestration,
   persistent self-observation, improvement evaluation, and generated
   self-model assembly.
+- `kai.awareness`: evidence-constrained operational capability states,
+  observation freshness, deterministic awareness contract fixtures, and a
+  privacy-safe report derived from existing persisted self-model/runtime
+  records.
 - `kai.cli`: user-visible command interface. Discovery is read-only; `measure`
   is an explicit opt-in bounded local measurement.
 

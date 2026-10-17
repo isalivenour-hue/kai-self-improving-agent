@@ -209,12 +209,51 @@ See [ADR-0006](./docs/adr/0006-disposable-candidate-workspaces.md).
   weights in the directive total 95, not the stated 100; the scorecard preserves
   those weights and reports 61/95 (64.21%) pending a versioned rubric decision.
 
-## Candidate next milestone (not started)
+## Primary mission: operational self-awareness first
 
-Expand evaluation evidence with a separately frozen held-out workload and
-independent raw-data re-derivation, then implement the machine-readable
-alignment scorecard. Keep production integration, deployment, unbounded agent
-behavior, and autonomous candidate selection out of scope.
+KAI's highest architectural priority is now reliable, evidence-grounded
+awareness of its current state, environment, capabilities, limitations,
+uncertainty, errors, and continuity. This is a measurable software-engineering
+goal, not a claim of consciousness.
+
+### KAI awareness v1 first slice (implemented)
+
+- Added `kai awareness status`, which derives a privacy-safe report from the
+  current persisted self-model and runtime/database state.
+- Report fields carry source, observation timestamp, epistemic state, and a
+  five-minute initial freshness policy. Unknown and stale data are not reported
+  as current verified facts.
+- Capability status distinguishes implementation, availability, permission,
+  and test execution. Provider readiness and test-source inventory do not
+  imply successful inference or test execution.
+- Added `kai awareness benchmark`, an eleven-case deterministic fixture
+  evaluation of capability, epistemic, and freshness contracts. Results are
+  persisted as append-only `AWARENESS_BENCHMARK_COMPLETED` events.
+- Added evidence-linked stable gaps for unrun tests, unverified GPU usability,
+  and missing awareness evaluation. The report omits secrets, raw paths,
+  memory/task/prediction content, and error payloads.
+- Reuses schema v9 and the existing self-model, environment snapshot, integrity,
+  and event mechanisms; no database migration or new dependency was needed.
+- The fixture suite verifies reporting rules, not full live-host accuracy or
+  generalization. The pre-implementation dedicated awareness benchmark was
+  unavailable because no protocol existed.
+
+See [CORE_AWARENESS_MISSION.md](./docs/CORE_AWARENESS_MISSION.md) for the
+baseline, evaluation methods, limitations, and remaining work.
+
+## Primary next milestone: KAI awareness v1.1 (planned)
+
+- Freeze independently labeled state/capability/knowledge-gap fixtures before
+  measuring live self-report accuracy, completeness, and false-positive and
+  false-negative capability claims.
+- Persist explicit test-run evidence and distinguish it across process restart
+  from static test inventory.
+- Evaluate environment/configuration/model-availability changes, stale cached
+  state, conflicting evidence, and interrupted task recovery.
+- Add prediction-to-error correction checks that preserve historical claims and
+  require evidence for any correction.
+- Keep deployment, unbounded agent behavior, and autonomous candidate selection
+  out of scope.
 
 ## KAI 0.009 implementation status
 
@@ -242,16 +281,15 @@ behavior, and autonomous candidate selection out of scope.
   Ollama model. This demonstrates improved planning reliability only; it did
   not generate a candidate patch or establish genuine self-improvement.
 
-## Later research directions
+## Self-awareness-driven research directions
 
-1. Provenance-aware contradiction queries and promotion/retraction policies
-   grounded in independent evidence.
-2. Measured, repeatable experiments for capability verification (for example,
-   a separately approved GPU probe only when its runtime and safety assumptions
-   are understood).
-3. Minimal goals with explicit success/failure criteria and no action executor.
-4. Better bounded observation and prediction experiments once scoring criteria
-   and a concrete domain are agreed.
+1. Provenance-aware contradiction queries and claim supersession grounded in
+   independent evidence.
+2. Restart continuity and explicit unresolved-operation reconciliation.
+3. Independently evaluated knowledge-gap precision/recall and held-out
+   awareness regressions.
+4. Safe capability verification only where a fixed test and authorization
+   boundary are defined.
 5. Add providers beyond Ollama/OpenAI only with concrete capability, privacy,
    and budget tests; extend the shared provider contract rather than runtime
    or engineering orchestration.
