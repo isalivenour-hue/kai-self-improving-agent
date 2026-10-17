@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import uuid
 from pathlib import Path
@@ -57,6 +58,106 @@ REVIEW_SCHEMA = {
     "required": ["findings", "risk_assessment", "recommendation"],
     "additionalProperties": False,
 }
+ENGINEERING_CONTRACT_VERSION = 1
+MAX_MODEL_PATCH_BYTES = 2_048
+MAX_MODEL_PATCH_LINES = 80
+
+
+def _diagnostic(stage: str, error: BaseException, *, retry_eligible: bool = False) -> dict:
+    """Return bounded, typed diagnostics for an engineering attempt."""
+    message = str(error)
+    lowered = message.lower()
+    if "repeat limit" in lowered or "prediction aborted" in lowered:
+        category = "generation_error"
+    elif "timed out" in lowered or "timeout" in lowered:
+        category = "timeout"
+    elif "malformed" in lowered or "invalid json" in lowered:
+        category = "invalid_json"
+    elif "fields do not match" in lowered or "must select" in lowered or "schema" in lowered:
+        category = "schema_violation"
+    elif "does not exist" in lowered or "selected a test module" in lowered or "outside the verified inventory" in lowered or "source/test pair" in lowered:
+        category = "invalid_reference"
+    elif "unavailable" in lowered or "not installed" in lowered:
+        category = "provider_unavailable"
+    elif "sandbox" in lowered:
+        category = "sandbox_failure"
+    else:
+        category = "engineering_error"
+    return {
+        "contract_version": ENGINEERING_CONTRACT_VERSION,
+        "stage": stage,
+        "failure_category": category,
+        "retry_eligible": bool(retry_eligible),
+        "message": message[:500],
+    }
+
+
+_PROHIBITED_PLANNING_PATH_PARTS = {
+    "benchmark.py",
+    "candidate_runner.py",
+    "candidate_workspace.py",
+    "config.py",
+    "database.py",
+    "local_llm.py",
+    "security.py",
+}
+
+
+def _eligible_plan_inventory(source_root: Path, inventory: dict) -> dict:
+    """Build a small, deterministic allowlist from the inspected repository."""
+    source_paths = {
+        item["path"]
+        for item in inventory.get("module_inventory", [])
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    }
+    test_paths = {
+        item["path"]
+        for item in inventory.get("module_inventory", [])
+        if isinstance(item, dict)
+        and isinstance(item.get("path"), str)
+        and item["path"].startswith("tests/test_")
+        and item["path"].endswith(".py")
+    }
+    pairs = []
+    for source in sorted(source_paths):
+        source_name = Path(source).name
+        if not source.startswith("kai/") or source_name in _PROHIBITED_PLANNING_PATH_PARTS:
+            continue
+        if source_name == "__init__.py" or source_name == "__main__.py":
+            continue
+        module_name = f"tests.test_{Path(source).stem}"
+        test_path = f"tests/test_{Path(source).stem}.py"
+        if test_path not in test_paths or not (source_root / test_path).is_file():
+            continue
+        if not (source_root / source).is_file():
+            continue
+        pairs.append({"target_file": source, "test_module": module_name})
+    pairs = pairs[:6]
+    encoded = json.dumps(pairs, sort_keys=True, separators=(",", ":"))
+    return {
+        "options": pairs,
+        "inventory_sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
+        "prohibited_paths": sorted(_PROHIBITED_PLANNING_PATH_PARTS),
+    }
+
+
+def _plan_schema(inventory: dict) -> dict:
+    """Constrain model references to the verified inventory without guessing."""
+    options = inventory["options"]
+    return {
+        **PLAN_SCHEMA,
+        "properties": {
+            **PLAN_SCHEMA["properties"],
+            "target_file": {
+                "type": "string",
+                "enum": sorted({item["target_file"] for item in options}),
+            },
+            "test_module": {
+                "type": "string",
+                "enum": sorted({item["test_module"] for item in options}),
+            },
+        },
+    }
 
 
 class EngineeringCoordinator:
@@ -129,6 +230,9 @@ class EngineeringCoordinator:
             details={
                 "source_snapshot_sha256": inspection["source_inventory"]["source_snapshot_sha256"],
                 "provider": inspection["provider"],
+                "eligible_plan_inventory": _eligible_plan_inventory(
+                    self.source_root, inspection["source_inventory"]
+                ),
             },
             updates={"inspection": inspection, "provider": inspection["provider"]},
         )
@@ -150,7 +254,11 @@ class EngineeringCoordinator:
                 task["task_id"],
                 status="FAILED",
                 stage="PLAN",
-                result={"decision": "INCONCLUSIVE", "error": str(exc)},
+                result={
+                    "decision": "INCONCLUSIVE",
+                    "error": str(exc),
+                    "diagnostic": _diagnostic("PLAN", exc),
+                },
             )
 
     def run(self, objective: str) -> dict:
@@ -162,7 +270,12 @@ class EngineeringCoordinator:
                 task_id,
                 stage="REPOSITORY_INSPECTION",
                 status="REPOSITORY_INSPECTION",
-                details={"source_snapshot_sha256": inspection["source_inventory"]["source_snapshot_sha256"]},
+                details={
+                    "source_snapshot_sha256": inspection["source_inventory"]["source_snapshot_sha256"],
+                    "eligible_plan_inventory": _eligible_plan_inventory(
+                        self.source_root, inspection["source_inventory"]
+                    ),
+                },
                 updates={"inspection": inspection, "provider": inspection["provider"]},
             )
             provider_status = inspection["provider"]
@@ -423,6 +536,7 @@ class EngineeringCoordinator:
                 decision_status=None,
             )
         except (KaiError, OSError, ValueError, TypeError) as exc:
+            task_snapshot = self.database.get_engineering_task(task_id)
             return self._finish(
                 task_id,
                 status="FAILED",
@@ -430,8 +544,13 @@ class EngineeringCoordinator:
                 result={
                     "decision": "INCONCLUSIVE",
                     "error": str(exc),
-                    "candidate_id": self.database.get_engineering_task(task_id)["candidate_id"],
-                    "workspace_id": self.database.get_engineering_task(task_id)["workspace_id"],
+                    "diagnostic": _diagnostic(
+                        task_snapshot["events"][-1]["stage"] if task_snapshot["events"] else "UNKNOWN",
+                        exc,
+                        retry_eligible=False,
+                    ),
+                    "candidate_id": task_snapshot["candidate_id"],
+                    "workspace_id": task_snapshot["workspace_id"],
                     "production_source_modified": False,
                 },
             )
@@ -459,6 +578,12 @@ class EngineeringCoordinator:
                 "decision": "UNKNOWN",
                 "reason": provider_status.get("reason")
                 or f"Configured local model is not ready ({provider_status.get('status')}).",
+                "diagnostic": {
+                    "contract_version": ENGINEERING_CONTRACT_VERSION,
+                    "stage": "PLAN",
+                    "failure_category": "provider_unavailable",
+                    "retry_eligible": True,
+                },
                 "provider_status": provider_status,
                 "production_source_modified": False,
             },
@@ -475,21 +600,30 @@ class EngineeringCoordinator:
 
     def _request_plan(self, objective: str, inspection: dict) -> dict:
         inventory = inspection["source_inventory"]
+        eligible = _eligible_plan_inventory(self.source_root, inventory)
+        if not eligible["options"]:
+            raise KaiError("No eligible source/test pairs were found in the verified inventory.")
+        option_text = json.dumps(eligible["options"], separators=(",", ":"))
+        example = eligible["options"][0]
         prompt = (
             "You are planning one small, reversible KAI engineering change. "
-            "Return only the required JSON object. Choose exactly one Python source "
-            "file under kai/ or tests/ and one existing tests.test_<name> module. "
+            "Return only one JSON object matching the schema. Choose exactly one "
+            "source/test pair from the VERIFIED OPTIONS list; do not invent paths. "
             "Do not request shell commands, dependencies, credentials, network, or "
             "production changes. Do not claim that tests or benchmarks have run.\n"
             f"Objective:\n{objective}\n"
+            f"Verified options (exact target_file/test_module pairs):\n{option_text}\n"
+            "Valid JSON example:\n"
+            f'{{"summary":"Add a small tested improvement.","target_file":"{example["target_file"]}",'
+            f'"test_module":"{example["test_module"]}","reason":"Address the stated bounded objective.",'
+            '"acceptance_criteria":["The selected test module passes."],"risk":"Limited to the selected module."}\n'
+            "Prohibited changes: benchmark evaluators, security controls, sandbox configuration, "
+            "deployment logic, credentials, generated artifacts, and unrelated files.\n"
             "Repository inventory:\n"
             + json.dumps(
                 {
-                    "source_paths": [
-                        item["path"] for item in inventory["module_inventory"]
-                    ][:100],
-                    "file_count": inventory["source_file_count"]
-                    + inventory["test_file_count"],
+                    "eligible_options": eligible["options"],
+                    "inventory_sha256": eligible["inventory_sha256"],
                     "source_digest": inventory["source_snapshot_sha256"],
                     "python_version": inspection["environment"]["python_version"],
                     "memory_available_bytes": inspection["environment"][
@@ -499,7 +633,7 @@ class EngineeringCoordinator:
                 separators=(",", ":"),
             )
         )
-        result = self._generate_json(prompt, PLAN_SCHEMA, "planning")
+        result = self._generate_json(prompt, _plan_schema(eligible), "planning")
         self._validate_provider_result(result)
         plan = result.get("structured")
         if not isinstance(plan, dict):
@@ -510,8 +644,28 @@ class EngineeringCoordinator:
         for key in ("summary", "target_file", "test_module", "reason", "risk"):
             if not isinstance(plan[key], str) or not plan[key].strip():
                 raise KaiError(f"Engineering plan {key} must be non-empty text.")
-        if not re.fullmatch(r"tests\.test_[A-Za-z0-9_]+", plan["test_module"]):
-            raise KaiError("Engineering plan must select one existing unittest module.")
+        selected = next(
+            (
+                item
+                for item in eligible["options"]
+                if item["target_file"] == plan["target_file"]
+                and item["test_module"] == plan["test_module"]
+            ),
+            None,
+        )
+        if selected is None:
+            if ".." in plan["target_file"] or not plan["target_file"].startswith("kai/"):
+                raise KaiError("Engineering plan target path traversal or protected path was rejected.")
+            raise KaiError("Engineering plan selected a source/test pair outside the verified inventory.")
+        objective_lower = objective.lower()
+        if any(token in objective_lower for token in ("cpu predictor", "cpu prediction", "predictor")):
+            if selected != {
+                "target_file": "kai/predictive.py",
+                "test_module": "tests.test_predictive",
+            }:
+                raise KaiError(
+                    "Predictor objectives must select the verified kai/predictive.py and tests.test_predictive pair."
+                )
         test_path = self.source_root / (plan["test_module"].replace(".", "/") + ".py")
         if not test_path.is_file():
             raise KaiError("Engineering plan selected a test module that does not exist.")
@@ -527,12 +681,15 @@ class EngineeringCoordinator:
             raise KaiError("Engineering plan acceptance criteria are invalid.")
         return {
             **plan,
+            "contract_version": ENGINEERING_CONTRACT_VERSION,
             "provider": result["provider"],
             "model": result["model"],
             "local_only": result["local_only"],
             "model_request_id": result["request_id"],
             "actual_model": result.get("actual_model"),
             "routing": result.get("routing"),
+            "inventory_sha256": eligible["inventory_sha256"],
+            "eligible_options": eligible["options"],
         }
 
     def _request_patch(
@@ -549,19 +706,24 @@ class EngineeringCoordinator:
         root = self.workspace_manager.path_for(workspace_id)
         target = self.workspace_manager._target_path(root, target_file)
         current = target.read_text(encoding="utf-8") if target.exists() else ""
-        if len(current) > 4_000:
-            raise KaiError(
-                f"Selected source {target_file} exceeds the bounded 4000-character model context."
-            )
+        large_source = len(current.encode("utf-8")) > 4_000
         prompt = (
-            "Propose exactly one complete-file operation as JSON. Never emit shell "
+            "Propose exactly one bounded file operation as JSON. Never emit shell "
             "commands, unified-diff text, credentials, network instructions, or "
-            "changes to any path other than the single allowed target. "
-            "Keep the change minimal, syntactically valid, and testable.\n"
+            "changes to any path other than the single allowed target. Keep the "
+            "change minimal, syntactically valid, and testable.\n"
             f"Objective: {objective}\n"
             f"Plan: {json.dumps(plan, ensure_ascii=False)}\n"
             f"Allowed target: {target_file}\n"
-            f"Current source (empty means ADD):\n{current}\n"
+            + (
+                "The source is larger than the model context. Use operation APPEND "
+                "and return only a small syntactically valid Python suffix. The "
+                "content must contain at most one complete function definition, "
+                "must not contain an unfinished expression, and must not repeat "
+                "the existing file.\n"
+                if large_source
+                else f"Current source (empty means ADD):\n{current}\n"
+            )
         )
         if failure is not None:
             prompt += (
@@ -574,7 +736,7 @@ class EngineeringCoordinator:
             "type": "object",
             "properties": {
                 "target_file": {"const": target_file},
-                "operation": {"type": "string", "enum": ["ADD", "MODIFY", "DELETE"]},
+                "operation": {"type": "string", "enum": ["ADD", "MODIFY", "DELETE", "APPEND"]},
                 "content": {"type": ["string", "null"]},
                 "reason": {"type": "string"},
             },
@@ -593,7 +755,7 @@ class EngineeringCoordinator:
             raise KaiError("Local model returned a malformed candidate operation.")
         if patch["target_file"] != target_file:
             raise KaiError("Local model candidate operation escaped its planned target.")
-        if patch["operation"] not in {"ADD", "MODIFY", "DELETE"}:
+        if patch["operation"] not in {"ADD", "MODIFY", "DELETE", "APPEND"}:
             raise KaiError("Local model candidate operation is unsupported.")
         if not isinstance(patch["reason"], str) or not patch["reason"].strip():
             raise KaiError("Candidate operation requires a non-empty reason.")
@@ -601,7 +763,13 @@ class EngineeringCoordinator:
             if patch["content"] is not None:
                 raise KaiError("DELETE candidate operations must not include content.")
         elif not isinstance(patch["content"], str):
-            raise KaiError("ADD and MODIFY candidate operations require source text.")
+            raise KaiError("ADD, MODIFY, and APPEND candidate operations require source text.")
+        elif len(patch["content"].encode("utf-8")) > MAX_MODEL_PATCH_BYTES:
+            raise KaiError("Candidate patch content exceeds the 2048-byte model patch limit.")
+        elif len(patch["content"].splitlines()) > MAX_MODEL_PATCH_LINES:
+            raise KaiError("Candidate patch content exceeds the 80-line model patch limit.")
+        if large_source and patch["operation"] != "APPEND":
+            raise KaiError("Large source candidates must use the bounded APPEND operation.")
         return {
             **patch,
             "provider": result["provider"],
@@ -646,8 +814,13 @@ class EngineeringCoordinator:
         workspace = self.workspace_manager.path_for(workspace_id)
         target = self.workspace_manager._target_path(workspace, target_file)
         content = target.read_text(encoding="utf-8") if target.exists() else ""
-        if len(content) > 4_000:
-            raise KaiError("Candidate source exceeds the bounded review context.")
+        review_content = content
+        if len(content.encode("utf-8")) > 4_000:
+            review_content = (
+                content[:1_800]
+                + "\n... [middle of source omitted from bounded advisory review] ...\n"
+                + content[-1_800:]
+            )
         prompt = (
             "Review this disposable candidate change for likely correctness risks. "
             "Return only the requested JSON. This review is advisory: do not claim "
@@ -657,7 +830,7 @@ class EngineeringCoordinator:
             f"Objective: {objective}\n"
             f"Plan: {json.dumps(plan, ensure_ascii=False)}\n"
             f"Target: {target_file}\n"
-            f"Candidate source:\n{content}\n"
+            f"Candidate source (possibly bounded excerpt):\n{review_content}\n"
         )
         response = self._generate_json(prompt, REVIEW_SCHEMA, "code_review")
         self._validate_provider_result(response)

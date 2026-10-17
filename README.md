@@ -12,6 +12,42 @@ model access behind a provider gateway, supports installed Ollama model
 selection, and adds a strictly opt-in OpenAI adapter and privacy-safe request
 history.
 
+KAI 0.008 adds `python3 -m kai benchmark cpu-predictor`, a versioned
+deterministic replay benchmark for the existing CPU prediction capability. It
+compares the running-mean baseline with a bounded last-observation candidate,
+calculates MAE/RMSE and explicit decision outcomes independently of any model,
+and persists the complete report as an append-only `BENCHMARK_COMPLETED` event.
+The fixed input is synthetic replay data (`SYNTHETIC_REPLAY`), not a live CPU
+timing measurement. This is a deterministic demonstration about one declared
+workload only; it is not evidence of AGI, consciousness, or general autonomous
+self-improvement.
+
+KAI 0.009 adds bounded engineering diagnostics. Validated plans now carry
+engineering contract version 1, and failed model-driven tasks retain a typed
+diagnostic with the failure stage, category, bounded message, and retry
+eligibility. Categories distinguish generation errors, invalid JSON, schema
+violations, invalid references, timeouts, provider unavailability, sandbox
+failures, and other engineering errors. Diagnostics do not relax validation or
+create automatic retries.
+
+KAI 0.009.1 hardens local-model planning. Repository inspection now derives a
+deterministic, hashed inventory of real `kai/*.py` source files with matching
+`tests/test_*.py` modules, excludes protected evaluator/security/runtime paths,
+and supplies the model only exact source/test choices. The model response is
+validated against those choices before any patch-generation stage can begin.
+The prompt includes a dynamic schema-valid JSON example and runtime resource
+observations. A valid plan is still only a plan: no candidate workspace, patch,
+benchmark result, or production change is created until later bounded stages
+succeed.
+
+KAI 0.010 adds a reusable, versioned paired-prediction evaluation contract and
+trusted in-process benchmark registry. The CPU replay remains the reference
+benchmark; all registered benchmarks share validation for case identity,
+units, finite measurements, sample completeness, and explicit outcomes from
+`UNKNOWN` through `STRONGLY_IMPROVED`. The registry does not execute dynamic
+plugins or generated code. This is an evaluation-framework improvement, not
+evidence that KAI's predictor generalizes beyond the fixed synthetic replay.
+
 This milestone is not a general intelligence, autonomous agent, or claim of
 consciousness. Models are used only after explicit commands; generated changes
 remain disposable candidates and are never automatically deployed. Cloud

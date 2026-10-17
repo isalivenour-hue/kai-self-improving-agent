@@ -35,6 +35,7 @@ from kai.environment_model import (
 from kai.discovery import capability_summary
 from kai.candidate_runner import CandidateRunner
 from kai.candidate_workspace import CandidateWorkspaceManager
+from kai.benchmark import run_cpu_predictor_benchmark
 from kai.evaluation_protocol import (
     CPU_PREDICTOR_PROTOCOL,
     summarize_repeated_errors,
@@ -114,6 +115,19 @@ class KaiRuntime:
 
     def local_llm_status(self) -> dict:
         return self._llm_provider().status()
+
+    def run_cpu_predictor_benchmark(self) -> dict:
+        """Run and persist one deterministic benchmark evidence record."""
+        self.database.initialize()
+        report = run_cpu_predictor_benchmark(source_root=Path(__file__).resolve().parent.parent)
+        event_id = self.database.record_event(
+            "BENCHMARK_COMPLETED",
+            f"Benchmark {report['benchmark']['benchmark_id']} completed with {report['decision']}.",
+            report,
+            source="kai.benchmark",
+            epistemic_status="OBSERVATION",
+        )
+        return {"event_id": event_id, **report}
 
     def generate_local_response(
         self,

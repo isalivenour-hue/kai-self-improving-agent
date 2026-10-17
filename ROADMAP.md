@@ -167,11 +167,80 @@ See [ADR-0006](./docs/adr/0006-disposable-candidate-workspaces.md).
 - Tests use mocks; they require no OpenAI credentials, SDK, network request, or
   downloaded Ollama model.
 
+## Completed: KAI 0.008 first evidence-driven benchmark
+
+- Added a versioned, SHA-256 identified benchmark specification for the
+  existing deterministic CPU prediction capability.
+- Added a chronological adaptation/evaluation split with fixed replay data,
+  baseline and candidate source identities, raw predictions and targets, MAE,
+  RMSE, prediction counts, and explicit decision-policy outcomes.
+- Persisted complete benchmark reports as append-only `BENCHMARK_COMPLETED`
+  events without allowing a model to edit the evaluator or thresholds.
+- Added deterministic tests for specification validation, dataset
+  reproducibility, metric/decision boundaries, evidence generation, and
+  persistence.
+- This milestone does not deploy candidates, claim statistical significance,
+  or prove general intelligence. The fixed CPU-like sequences are synthetic
+  replay data, not actual CPU timing measurements. The candidate is deterministic
+  benchmark code, not a model-generated patch.
+
+## Completed: KAI 0.010 reusable paired benchmark evaluation
+
+- Added an explicit paired-case contract shared by the CPU predictor reference
+  benchmark and additional trusted, in-process benchmark collectors.
+- Validated unique case IDs, finite non-negative metric values, declared units,
+  missing observations/predictions, sample minimums, and expected case counts.
+- Added versioned outcomes for `UNKNOWN`, `INVALID`, `FAILED`,
+  `INCONCLUSIVE`, `NO_MEANINGFUL_CHANGE`, `REGRESSED`, `IMPROVED`, and
+  `STRONGLY_IMPROVED`; improvement thresholds remain predeclared in the
+  hashed specification.
+- Preserved the existing CPU CLI and append-only evidence report. The CPU
+  replay is deterministic synthetic data, so its improvement result is limited
+  to that workload and does not establish real timing accuracy or generalization.
+- The registry accepts trusted Python collectors only; no plugin loading,
+  generated-code execution, candidate execution, or production mutation was
+  added.
+- Validation: the focused benchmark tests pass (9/9); the documented full
+  suite passes (170 run, 169 passed, one opt-in bubblewrap integration test
+  skipped); an isolated `KAI_HOME` CLI run emitted an `IMPROVED` report with 24
+  paired cases. The replay result is still not evidence of real-world
+  generalization.
+- Added a provisional v1 alignment scorecard in `docs/`. The fixed category
+  weights in the directive total 95, not the stated 100; the scorecard preserves
+  those weights and reports 61/95 (64.21%) pending a versioned rubric decision.
+
 ## Candidate next milestone (not started)
 
-Define a benchmark/acceptance protocol and human review/authorization process
-for generated candidate handoff. Keep production integration, deployment,
-unbounded agent behavior, and autonomous candidate selection out of scope.
+Expand evaluation evidence with a separately frozen held-out workload and
+independent raw-data re-derivation, then implement the machine-readable
+alignment scorecard. Keep production integration, deployment, unbounded agent
+behavior, and autonomous candidate selection out of scope.
+
+## KAI 0.009 implementation status
+
+- Engineering contract version 1 is attached to validated plans without
+  changing the existing bounded plan shape.
+- Model-driven engineering failures now persist typed diagnostics identifying
+  the stage, category, bounded error message, and whether a retry could be
+  eligible. Local gateway categorization distinguishes generation aborts,
+  truncated responses, invalid JSON, context limits, timeouts, and provider
+  failures.
+- This is a safe diagnostic subset of KAI 0.009. A genuine model-generated
+  candidate patch and independent benchmark evaluation remain unverified until
+  a local model produces a valid plan and patch.
+
+## KAI 0.009.1 implementation status
+
+- Planning now starts from a read-only repository inventory and deterministic
+  source/test pairs that exist on disk. Protected evaluator, security, model
+  gateway, database, sandbox, and configuration paths are excluded from the
+  planning choices.
+- The inventory is hashed and persisted with each planning event. The local
+  model receives exact enum choices plus a schema-valid example and cannot
+  introduce an invented test module or source path without failing validation.
+- A live constrained planning run produced a valid plan with the configured
+  Ollama model. This demonstrates improved planning reliability only; it did
+  not generate a candidate patch or establish genuine self-improvement.
 
 ## Later research directions
 

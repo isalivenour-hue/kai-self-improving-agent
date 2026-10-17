@@ -356,8 +356,12 @@ def _parser() -> argparse.ArgumentParser:
     learning = commands.add_parser("learning", help="inspect recent learning records and models")
     learning.add_argument("--limit", type=int, default=20)
     commands.add_parser("doctor", help="check state database and runtime health")
-    benchmark = commands.add_parser("benchmark", help="measure basic local SQLite operations")
+    benchmark = commands.add_parser("benchmark", help="run local or evidence-driven benchmarks")
     benchmark.add_argument("--rounds", type=int, default=10)
+    benchmark_actions = benchmark.add_subparsers(dest="benchmark_action")
+    benchmark_actions.add_parser(
+        "cpu-predictor", help="compare the running-mean predictor with the fixed candidate"
+    )
     commands.add_parser(
         "measure",
         help="run a safe, small CPU and read-only disk baseline; no GPU workload",
@@ -788,6 +792,9 @@ def _dispatch(arguments: argparse.Namespace, runtime: KaiRuntime) -> int:
         }
         _json(result)
     elif command == "benchmark":
+        if arguments.benchmark_action == "cpu-predictor":
+            _json(runtime.run_cpu_predictor_benchmark())
+            return 0
         if arguments.rounds < 1 or arguments.rounds > 1000:
             raise KaiError("Benchmark rounds must be between 1 and 1000.")
         _json(runtime.benchmark(rounds=arguments.rounds))

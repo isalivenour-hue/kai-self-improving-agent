@@ -8,7 +8,60 @@ KAI uses Python 3.10+ and the standard library only.
 PYTHONPATH=. python3 -m unittest discover -s tests -v
 PYTHONPATH=. python3 -m kai --help
 PYTHONPATH=. python3 -m kai llm status
+PYTHONPATH=. python3 -m kai benchmark cpu-predictor
 ```
+
+### Evidence-driven benchmark
+
+`python3 -m kai benchmark cpu-predictor` runs the KAI 0.008 deterministic
+replay benchmark. The first two values in each fixed sequence are adaptation
+observations; the remaining values are evaluation targets hidden from each
+forecaster until its prediction is produced. Metrics and decisions are
+calculated by `kai.benchmark`, not by a language model. The shared paired-case
+evaluator validates unique case IDs, finite non-negative values, matching
+units, missing predictions, and protocol sample counts. Its versioned decision
+states are `UNKNOWN`, `INVALID`, `FAILED`, `INCONCLUSIVE`,
+`NO_MEANINGFUL_CHANGE`, `REGRESSED`, `IMPROVED`, and `STRONGLY_IMPROVED`.
+`BenchmarkRegistry` accepts trusted in-process collectors that return paired
+case dictionaries (`case_id`, `target`, `baseline_prediction`,
+`candidate_prediction`, and `unit`) and routes them through the same evaluator:
+the shared paired-prediction metric is lower-is-better error, and other metric
+families or higher-is-better tasks need a separately versioned evaluator.
+
+```python
+from kai.benchmark import (
+    BENCHMARK_REGISTRY,
+    run_registered_benchmark,
+)
+
+report = run_registered_benchmark("cpu-predictor-learning")
+```
+
+The CPU predictor is the registered reference benchmark. Adding another
+benchmark requires an explicit specification and trusted collector in Python;
+the registry does not load plugins, execute generated code, or add a dynamic
+CLI command. The full report,
+including specification and dataset digests, source hashes, raw predictions,
+targets, and decision rationale, is stored in the append-only event history.
+The CPU report labels its fixed fixture as `SYNTHETIC_REPLAY`; it is not a live
+CPU timing measurement. The result applies only to the declared capability and
+dataset.
+
+`IMPROVED` is a protocol decision, not a claim of statistical significance or
+generalization. `STRONGLY_IMPROVED` requires the separately predeclared stronger
+relative-error threshold. A missing outcome, malformed pair, unit mismatch,
+incomplete run, or candidate failure cannot produce an improvement claim.
+The replay fixture is synthetic deterministic data; it does not establish that
+the predictor improves real CPU timing forecasts.
+
+### Engineering diagnostics
+
+Validated engineering plans carry contract version 1. When a model-driven task
+fails, the persisted task result includes a diagnostic with the stage, bounded
+failure category, safe bounded message, and retry eligibility. The categories
+are evidence labels, not claims about model internals. A diagnostic failure is
+never silently converted into a candidate, and retry eligibility does not cause
+an automatic retry.
 
 For disposable state:
 
@@ -20,6 +73,18 @@ Remove only the exact temporary directory created by that command when finished.
 Never point tests at the normal `~/.local/share/kai` data directory.
 Local model integration tests must mock the loopback HTTP API; tests must not
 download models, require a running Ollama service, or make remote requests.
+
+### Verified local-model planning (KAI 0.009.1)
+
+Before requesting a plan, KAI parses the source tree and verifies deterministic
+`kai/<module>.py` plus `tests/test_<module>.py` pairs on disk. Protected paths
+such as benchmark/evaluator, security, sandbox, provider, database, and
+configuration code are not offered as planning targets. The resulting options
+and SHA-256 inventory digest are persisted in the engineering task event.
+The model receives only those exact choices and a matching JSON example; the
+response must pass the contract, schema, pair-membership, path, and test-file
+checks. This stage intentionally stops at a plan and does not imply that a
+patch, candidate, benchmark, or production modification exists.
 
 ## Schema and state
 

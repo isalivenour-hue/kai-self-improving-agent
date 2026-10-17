@@ -1032,6 +1032,14 @@ class ModelGateway:
 
 def _error_category(error: KaiError) -> str:
     message = str(error).lower()
+    if "repeat limit" in message or "prediction aborted" in message:
+        return "generation_error"
+    if "did not complete" in message or "truncated" in message:
+        return "truncated_response"
+    if "malformed structured json" in message or "invalid json" in message:
+        return "invalid_json"
+    if "http 413" in message or "context" in message and "limit" in message:
+        return "context_limit"
     if "timed out" in message or "timeout" in message:
         return "timeout"
     if "not installed" in message or "unavailable" in message:

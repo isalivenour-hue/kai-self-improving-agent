@@ -27,6 +27,7 @@ except ImportError:
 
 MAX_TIMEOUT_SECONDS = 180
 MAX_OUTPUT_BYTES = 128 * 1024
+MAX_SANDBOX_FILE_BYTES = 64 * 1024 * 1024
 MAX_INPUT_BYTES = 1024 * 1024
 MAX_ADDRESS_SPACE_BYTES = 768 * 1024 * 1024
 MAX_CPU_SECONDS = 150
@@ -128,7 +129,12 @@ def _limits() -> None:
     resource.setrlimit(
         resource.RLIMIT_AS, (MAX_ADDRESS_SPACE_BYTES, MAX_ADDRESS_SPACE_BYTES)
     )
-    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES))
+    # Candidate source is mounted read-only; this bounds only ephemeral files
+    # such as SQLite test state inside the sandbox.
+    resource.setrlimit(
+        resource.RLIMIT_FSIZE,
+        (MAX_SANDBOX_FILE_BYTES, MAX_SANDBOX_FILE_BYTES),
+    )
     resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     if hasattr(resource, "RLIMIT_NPROC"):
@@ -452,6 +458,7 @@ class CandidateRunner:
             "cpu_time_limit_seconds": MAX_CPU_SECONDS,
             "timeout_seconds": timeout_seconds,
             "maximum_output_bytes": MAX_OUTPUT_BYTES,
+            "maximum_sandbox_file_bytes": MAX_SANDBOX_FILE_BYTES,
             "python_version": sys.version.split()[0],
             "platform": platform.system(),
         }

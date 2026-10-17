@@ -376,8 +376,8 @@ class CandidateWorkspaceManager:
         reason: str,
         hypothesis_id: int,
     ) -> dict:
-        if operation not in {"ADD", "MODIFY", "DELETE"}:
-            raise CandidateWorkspaceError("Modification operation must be ADD, MODIFY, or DELETE.")
+        if operation not in {"ADD", "MODIFY", "DELETE", "APPEND"}:
+            raise CandidateWorkspaceError("Modification operation must be ADD, MODIFY, DELETE, or APPEND.")
         if not isinstance(reason, str) or not reason.strip():
             raise CandidateWorkspaceError("Modification requires a reason.")
         if isinstance(hypothesis_id, bool) or not isinstance(hypothesis_id, int) or hypothesis_id < 1:
@@ -392,7 +392,7 @@ class CandidateWorkspaceManager:
         original = target.read_bytes() if target.exists() else None
         if operation == "ADD" and original is not None:
             raise CandidateWorkspaceError("ADD target already exists.")
-        if operation in {"MODIFY", "DELETE"} and original is None:
+        if operation in {"MODIFY", "DELETE", "APPEND"} and original is None:
             raise CandidateWorkspaceError(f"{operation} target does not exist.")
         if operation == "DELETE":
             resulting = None
@@ -403,9 +403,15 @@ class CandidateWorkspaceManager:
                 raise CandidateWorkspaceError("Candidate source file exceeds the size limit.")
             if _SECRET_VALUE.search(content):
                 raise CandidateWorkspaceError("Candidate source appears to contain a hard-coded secret.")
-            resulting = content.encode("utf-8")
+            resulting = (
+                original + content.encode("utf-8")
+                if operation == "APPEND"
+                else content.encode("utf-8")
+            )
+            if len(resulting) > MAX_SOURCE_FILE_BYTES:
+                raise CandidateWorkspaceError("Candidate source file exceeds the size limit.")
             try:
-                ast.parse(content, filename=target_file)
+                ast.parse(resulting.decode("utf-8"), filename=target_file)
             except SyntaxError as exc:
                 raise CandidateWorkspaceError(f"Candidate Python syntax is invalid: {exc}") from exc
         original_text = original.decode("utf-8") if original is not None else ""

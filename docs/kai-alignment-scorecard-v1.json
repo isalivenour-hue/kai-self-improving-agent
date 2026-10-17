@@ -1,0 +1,315 @@
+{
+  "rubric_id": "kai-dream-alignment",
+  "rubric_version": 1,
+  "assessment": {
+    "status": "provisional",
+    "repository_head": "a1836ef",
+    "python_version": "3.14.4",
+    "working_tree_was_clean": false,
+    "test_runs": [
+      {
+        "command": "PYTHONPATH=. python3 -m unittest discover -s tests -v",
+        "phase": "pre-change baseline",
+        "exit_code": 0,
+        "tests_run": 166,
+        "passed": 165,
+        "skipped": 1,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "command": "PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_benchmark.py' -v",
+        "phase": "post-change focused suite",
+        "exit_code": 0,
+        "tests_run": 9,
+        "passed": 9,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "command": "PYTHONPATH=. python3 -m unittest discover -s tests -v",
+        "phase": "post-change full suite",
+        "exit_code": 0,
+        "tests_run": 170,
+        "passed": 169,
+        "skipped": 1,
+        "failures": 0,
+        "errors": 0,
+        "skip_reason": "Optional real bubblewrap integration test requires KAI_RUN_SANDBOX_INTEGRATION=1."
+      },
+      {
+        "command": "KAI_HOME=/tmp/kai-cli-smoke.vmiGnT PYTHONPATH=. python3 -m kai benchmark cpu-predictor",
+        "phase": "post-change isolated CLI smoke",
+        "exit_code": 0,
+        "decision": "IMPROVED",
+        "case_count": 24,
+        "evidence_status": "SYNTHETIC_REPLAY",
+        "event_id": 3
+      }
+    ],
+    "limitations": [
+      "Repository inspection and unit tests are not equivalent to deployed end-to-end evidence.",
+      "The CPU replay benchmark uses fixed synthetic data and does not show predictor generalization.",
+      "No end-to-end income experiment or long-running daemon recovery test was performed."
+    ],
+    "operational_note": "One pre-change benchmark CLI smoke was inadvertently run without a temporary KAI_HOME and appended BENCHMARK_COMPLETED event_id 7 to the configured KAI database. The append-only event was verified read-only and retained; no existing event was deleted. Subsequent CLI validation used a temporary KAI_HOME."
+  },
+  "maturity_scale": {
+    "0.0": "Missing, unsafe, or contradicted by evidence.",
+    "0.25": "Documented or designed, but no demonstrated implementation.",
+    "0.5": "Implementation exists, but behavior has not been adequately verified.",
+    "0.75": "Relevant tests passed and capability is demonstrated within a defined scope.",
+    "1.0": "Reproducible end-to-end evidence demonstrates behavior, including failure paths, limitations, and regression checks."
+  },
+  "categories": [
+    {
+      "id": "environment_observation",
+      "name": "Environment observation and capability discovery",
+      "weight": 10,
+      "criteria": [
+        {
+          "id": "environment_inventory",
+          "description": "Collect a structured OS/runtime/resource inventory with provenance and explicit unknowns.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/environment_model.py", "tests/test_runtime.py"],
+          "limitation": "Coverage is bounded to implemented host observations; it is not a continuous live monitor."
+        },
+        {
+          "id": "capability_layers",
+          "description": "Separate hardware visibility, driver/runtime discovery, and operational usability.",
+          "weight": 5,
+          "maturity": 0.5,
+          "evidence": ["kai/environment_model.py", "kai/runtime.py"],
+          "limitation": "Every discovered accelerator/runtime capability has not been operationally probed."
+        }
+      ]
+    },
+    {
+      "id": "memory_and_epistemics",
+      "name": "Structured representation, epistemic verification, and persistent memory",
+      "weight": 10,
+      "criteria": [
+        {
+          "id": "persistent_history",
+          "description": "Persist structured events, experiences, predictions, and memory with schema migration support.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/database.py", "tests/test_experience.py", "tests/test_runtime.py"],
+          "limitation": "Full retention, export, and disaster-recovery lifecycle evidence is incomplete."
+        },
+        {
+          "id": "epistemic_provenance",
+          "description": "Preserve provenance and OBSERVED/INFERRED/UNKNOWN epistemic distinctions.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/environment_model.py", "kai/self_improvement.py", "tests/test_self_improvement.py"],
+          "limitation": "Independent reconciliation of contradictory external claims is not broadly demonstrated."
+        }
+      ]
+    },
+    {
+      "id": "models_and_planning",
+      "name": "Modeling, prediction, reasoning, and goal planning",
+      "weight": 10,
+      "criteria": [
+        {
+          "id": "bounded_prediction",
+          "description": "Provide a deterministic predictor with explicit uncertainty and evaluation limits.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/predictive.py", "tests/test_predictive.py"],
+          "limitation": "The predictor is narrow and has no demonstrated broad-task generalization."
+        },
+        {
+          "id": "bounded_goal_plans",
+          "description": "Represent goals and validate constrained engineering plans before proposal execution.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/engineering.py", "kai/database.py", "tests/test_engineering.py"],
+          "limitation": "There is no general-purpose autonomous planner or goal scheduler."
+        }
+      ]
+    },
+    {
+      "id": "authorized_actions",
+      "name": "Authorized action execution, tools, and task orchestration",
+      "weight": 10,
+      "criteria": [
+        {
+          "id": "candidate_sandbox",
+          "description": "Constrain candidate file operations and candidate test execution through the approved sandbox path.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/candidate_workspace.py", "kai/candidate_runner.py", "tests/test_candidate_development.py"],
+          "limitation": "No unrestricted action interface or production deployment is supported."
+        },
+        {
+          "id": "engineering_task_lifecycle",
+          "description": "Persist bounded engineering task stages and validate model-generated plans.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/engineering.py", "tests/test_engineering.py"],
+          "limitation": "Successful live end-to-end patch generation and candidate evaluation remain unverified."
+        }
+      ]
+    },
+    {
+      "id": "measurable_learning",
+      "name": "Measurable learning and general benchmark infrastructure",
+      "weight": 15,
+      "criteria": [
+        {
+          "id": "causal_learning_records",
+          "description": "Link predictions, observations, evaluations, and model updates in persistent evidence.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["kai/database.py", "kai/predictive.py", "tests/test_predictive.py"],
+          "limitation": "Durable held-out generalization evidence is not established."
+        },
+        {
+          "id": "benchmark_protocol",
+          "description": "Use a versioned paired benchmark contract with raw cases, reusable registration, and tested decision states.",
+          "weight": 10,
+          "maturity": 0.75,
+          "evidence": ["kai/benchmark.py", "tests/test_benchmark.py"],
+          "limitation": "Only the synthetic CPU reference dataset is provided; no independent held-out benchmark is yet established."
+        }
+      ]
+    },
+    {
+      "id": "safe_self_improvement",
+      "name": "Safe recursive self-improvement and rollback",
+      "weight": 15,
+      "criteria": [
+        {
+          "id": "isolated_candidates",
+          "description": "Create bounded disposable candidates and audit modifications and sandboxed runs.",
+          "weight": 8,
+          "maturity": 0.75,
+          "evidence": ["kai/candidate_workspace.py", "kai/candidate_runner.py", "tests/test_candidate_development.py"],
+          "limitation": "The complete live sandbox lifecycle is not an end-to-end production promotion path."
+        },
+        {
+          "id": "evidence_based_promotion",
+          "description": "Gate candidate acceptance on validated evidence and preserve prior state/rollback history.",
+          "weight": 7,
+          "maturity": 0.5,
+          "evidence": ["kai/self_improvement.py", "kai/database.py", "tests/test_self_improvement.py"],
+          "limitation": "Automatic promotion is intentionally unsupported; end-to-end rollback of a deployed candidate is not demonstrated."
+        }
+      ]
+    },
+    {
+      "id": "model_provider_integration",
+      "name": "Model/provider integration and independently verifiable specialist orchestration",
+      "weight": 5,
+      "criteria": [
+        {
+          "id": "provider_gateway",
+          "description": "Route local and explicitly authorized cloud models with tested capability/privacy boundaries.",
+          "weight": 3,
+          "maturity": 0.75,
+          "evidence": ["kai/local_llm.py", "tests/test_model_gateway.py", "tests/test_local_llm.py"],
+          "limitation": "Live provider availability is environment-dependent and was not established by this test run."
+        },
+        {
+          "id": "independent_specialists",
+          "description": "Use independent specialist components with explicit permissions and verification.",
+          "weight": 2,
+          "maturity": 0.25,
+          "evidence": ["ARCHITECTURE.md"],
+          "limitation": "A specialist-agent orchestration system is not implemented."
+        }
+      ]
+    },
+    {
+      "id": "ethical_income",
+      "name": "Ethical online-income experimentation",
+      "weight": 5,
+      "criteria": [
+        {
+          "id": "income_safety_design",
+          "description": "Document authorization, ethical constraints, and low-cost human-reviewed experiment boundaries.",
+          "weight": 2.5,
+          "maturity": 0.25,
+          "evidence": ["ROADMAP.md"],
+          "limitation": "A persistent opportunity and experiment subsystem is not demonstrated."
+        },
+        {
+          "id": "verified_net_outcome",
+          "description": "Complete an authorized income experiment with independently verified revenue, cost, and net contribution.",
+          "weight": 2.5,
+          "maturity": 0.0,
+          "evidence": [],
+          "limitation": "No such experiment has been performed."
+        }
+      ]
+    },
+    {
+      "id": "long_running_operation",
+      "name": "Reliable long-running operation and resource management",
+      "weight": 5,
+      "criteria": [
+        {
+          "id": "runtime_health_reporting",
+          "description": "Report runtime and provider health with resource-aware observations.",
+          "weight": 2.5,
+          "maturity": 0.5,
+          "evidence": ["kai/runtime.py", "kai/environment_model.py", "tests/test_runtime.py"],
+          "limitation": "Health reporting is command-driven, not a supervised daemon."
+        },
+        {
+          "id": "persistent_scheduler",
+          "description": "Provide bounded persistent scheduling, restart recovery, graceful shutdown, and stalled-task detection.",
+          "weight": 2.5,
+          "maturity": 0.25,
+          "evidence": ["ROADMAP.md"],
+          "limitation": "A background scheduler/service lifecycle is not implemented."
+        }
+      ]
+    },
+    {
+      "id": "quality_security_auditability",
+      "name": "Testing, reproducibility, security, provenance, and operational auditability",
+      "weight": 10,
+      "criteria": [
+        {
+          "id": "automated_regression_tests",
+          "description": "Run deterministic local tests covering database, runtime, gateway, engineering, and benchmark behavior.",
+          "weight": 5,
+          "maturity": 0.75,
+          "evidence": ["DEVELOPMENT.md", "tests/"],
+          "limitation": "One environment's unit suite does not demonstrate all operating systems or real-provider behavior."
+        },
+        {
+          "id": "security_and_provenance",
+          "description": "Enforce privacy, path/sandbox boundaries, and auditable provenance for consequential engineering operations.",
+          "weight": 5,
+          "maturity": 0.5,
+          "evidence": ["SECURITY.md", "kai/candidate_workspace.py", "kai/candidate_runner.py"],
+          "limitation": "Independent security assessment and full threat-model verification have not been performed."
+        }
+      ]
+    }
+  ],
+  "calculation": {
+    "formula": "sum(criterion.weight * criterion.maturity) / sum(listed category weights) * 100",
+    "possible_points": 95,
+    "earned_points": 61.0,
+    "alignment_percentage": 64.21052631578947,
+    "is_intelligence_measure": false,
+    "rubric_weight_total_discrepancy": "The directive states that the fixed category weights total 100, but the ten listed category weights sum to 95. All listed category weights and their criterion allocations are preserved; the percentage is normalized against 95 pending a versioned rubric correction."
+  },
+  "release_readiness": {
+    "status": "NOT_READY",
+    "blockers": [
+      "Only the synthetic CPU benchmark is available; independent held-out generalization is unverified.",
+      "A live candidate-generation, evaluation, approval, and rollback path has not been demonstrated end to end.",
+      "Long-running service lifecycle and recovery are not implemented.",
+      "No verified ethical income experiment exists."
+    ]
+  },
+  "previous_scorecard": null
+}

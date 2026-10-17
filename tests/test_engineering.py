@@ -13,7 +13,7 @@ from kai.candidate_runner import CandidateExecutionResult
 from kai.candidate_workspace import CandidateWorkspaceManager
 from kai.database import Database
 from kai.errors import KaiError
-from kai.engineering import EngineeringCoordinator
+from kai.engineering import EngineeringCoordinator, _eligible_plan_inventory
 
 
 class FakeProvider:
@@ -225,6 +225,16 @@ class EngineeringCoordinatorTests(unittest.TestCase):
             repair_attempts=repair_attempts,
         )
 
+    def test_verified_plan_inventory_is_deterministic_and_excludes_protected_files(self):
+        inventory = self.coordinator(RoutedFakeProvider(), FakeRunner()).inspect()["source_inventory"]
+        first = _eligible_plan_inventory(self.source_root, inventory)
+        second = _eligible_plan_inventory(self.source_root, inventory)
+        self.assertEqual(first, second)
+        self.assertTrue(first["options"])
+        self.assertEqual(first["inventory_sha256"], _eligible_plan_inventory(self.source_root, inventory)["inventory_sha256"])
+        self.assertNotIn("kai/database.py", [item["target_file"] for item in first["options"]])
+        self.assertNotIn("kai/local_llm.py", [item["target_file"] for item in first["options"]])
+
     def test_mocked_end_to_end_candidate_never_modifies_production(self):
         original = self.target.read_bytes()
         runner = FakeRunner()
@@ -267,6 +277,47 @@ class EngineeringCoordinatorTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM engineering_tasks"
             ).fetchone()[0]
         self.assertEqual(task_count, 1)
+
+    def test_validated_plan_has_contract_version(self):
+        result = self.coordinator(RoutedFakeProvider(), FakeRunner()).plan(
+            "Add a docstring to the helper without changing its behavior."
+        )
+        self.assertEqual(result["status"], "PLAN")
+        self.assertEqual(result["plan"]["contract_version"], 1)
+
+    def test_invalid_model_plan_persists_typed_diagnostic(self):
+        provider = RoutedFakeProvider(
+            plan={
+                "summary": "Bad plan",
+                "target_file": "kai/simple.py",
+                "test_module": "tests.test_missing",
+                "reason": "The selected module does not exist.",
+                "acceptance_criteria": ["Pass."],
+                "risk": "Unknown.",
+            }
+        )
+        result = self.coordinator(provider, FakeRunner()).plan("Make a bounded change.")
+        self.assertEqual(result["status"], "FAILED")
+        self.assertEqual(result["result"]["diagnostic"]["stage"], "PLAN")
+        self.assertEqual(result["result"]["diagnostic"]["failure_category"], "invalid_reference")
+        self.assertFalse(result["result"]["diagnostic"]["retry_eligible"])
+
+    def test_predictor_objective_cannot_drift_to_another_verified_pair(self):
+        provider = RoutedFakeProvider(
+            plan={
+                "summary": "Change the predictor.",
+                "target_file": "kai/simple.py",
+                "test_module": "tests.test_simple",
+                "reason": "Wrong verified pair.",
+                "acceptance_criteria": ["Pass."],
+                "risk": "Unknown.",
+            }
+        )
+        result = self.coordinator(provider, FakeRunner()).plan(
+            "Make one small improvement to the CPU predictor."
+        )
+        self.assertEqual(result["status"], "FAILED")
+        self.assertIn("predictor objectives", result["result"]["error"].lower())
 
     def test_unavailable_local_provider_persists_blocked_task_without_candidate(self):
         result = self.coordinator(
