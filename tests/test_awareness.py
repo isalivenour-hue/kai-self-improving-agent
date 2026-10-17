@@ -1,12 +1,13 @@
 import json
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 
 from kai.awareness import (
     assess_capability,
     build_awareness_report,
+    classify_generation_evidence,
     classify_claim,
     observation_freshness,
     run_awareness_benchmark,
@@ -89,6 +90,44 @@ class AwarenessContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             observation_freshness(None, now=now, maximum_age_seconds=-1)
 
+    def test_generation_evidence_is_scoped_by_outcome_and_freshness(self):
+        now = datetime(2026, 10, 17, tzinfo=timezone.utc)
+        recent_success = classify_generation_evidence(
+            {"completed_at": now.isoformat(), "outcome": "SUCCESS"}, now=now
+        )
+        self.assertEqual(recent_success["test_status"], "PASSED")
+        self.assertEqual(recent_success["freshness"], "CURRENT")
+
+        recent_failure = classify_generation_evidence(
+            {"completed_at": now.isoformat(), "outcome": "FAILED"}, now=now
+        )
+        self.assertEqual(recent_failure["test_status"], "FAILED")
+
+        stale_success = classify_generation_evidence(
+            {
+                "completed_at": "2026-10-16T23:00:00Z",
+                "outcome": "SUCCESS",
+            },
+            now=now,
+        )
+        self.assertEqual(stale_success["test_status"], "NOT_RUN")
+        self.assertEqual(stale_success["freshness"], "STALE")
+
+        future_success = classify_generation_evidence(
+            {
+                "completed_at": "2026-10-18T00:00:00Z",
+                "outcome": "SUCCESS",
+            },
+            now=now,
+        )
+        self.assertEqual(future_success["test_status"], "UNKNOWN")
+        self.assertEqual(future_success["freshness"], "UNKNOWN")
+
+        malformed = classify_generation_evidence(
+            {"completed_at": now.isoformat(), "outcome": "MAYBE"}, now=now
+        )
+        self.assertEqual(malformed["test_status"], "UNKNOWN")
+
     def test_claim_repetition_does_not_promote_hypothesis_or_unsupported_fact(self):
         self.assertEqual(
             classify_claim(
@@ -131,12 +170,12 @@ class AwarenessContractTests(unittest.TestCase):
     def test_deterministic_benchmark_reports_all_fixture_outcomes(self):
         result = run_awareness_benchmark()
         self.assertEqual(result["status"], "PASSED")
-        self.assertEqual(result["sample_count"], 12)
-        self.assertEqual(result["passed_cases"], 12)
+        self.assertEqual(result["sample_count"], 16)
+        self.assertEqual(result["passed_cases"], 16)
         self.assertEqual(result["case_accuracy"], 1.0)
         self.assertEqual(result["false_positive_verified_claim_count"], 0)
         self.assertEqual(result["false_negative_verified_claim_count"], 0)
-        self.assertEqual(result["unknown_case_count"], 2)
+        self.assertEqual(result["unknown_case_count"], 3)
         self.assertEqual(result["stale_case_count"], 1)
         self.assertEqual(result["unsupported_claim_case_count"], 1)
         self.assertEqual(
@@ -144,6 +183,11 @@ class AwarenessContractTests(unittest.TestCase):
         )
         self.assertFalse(result["statistical_significance_claimed"])
         self.assertFalse(result["confidence_calibration_claimed"])
+        cases_by_id = {case["case_id"]: case for case in result["cases"]}
+        self.assertTrue(cases_by_id["stale-generation-success"]["passed"])
+        self.assertEqual(
+            cases_by_id["stale-generation-success"]["actual"], "NOT_RUN"
+        )
 
     def test_report_preserves_unknowns_and_omits_private_content(self):
         timestamp = "2026-10-17T00:00:00+00:00"
@@ -206,6 +250,11 @@ class AwarenessContractTests(unittest.TestCase):
             report["capabilities"]["local_model_generation"]["status"],
             "IMPLEMENTED_UNVERIFIED",
         )
+        self.assertFalse(
+            report["fields"]["language_model.provider_readiness"]["value"][
+                "generation_verified"
+            ]
+        )
         self.assertEqual(
             report["capabilities"]["gpu_inference"]["status"], "NOT_IMPLEMENTED"
         )
@@ -229,7 +278,7 @@ class AwarenessContractTests(unittest.TestCase):
             identity_before = first_runtime.database.identity()["identity_id"]
             result = first_runtime.awareness_benchmark()
             self.assertEqual(result["status"], "PASSED")
-            self.assertEqual(first_runtime.database.schema_version(), 9)
+            self.assertEqual(first_runtime.database.schema_version(), 10)
 
             restarted_database = Database(config.database_path)
             restarted_database.initialize()
@@ -239,9 +288,142 @@ class AwarenessContractTests(unittest.TestCase):
             event = restarted_database.recent_events(
                 limit=1, event_type="AWARENESS_BENCHMARK_COMPLETED"
             )[0]
-            self.assertEqual(event["details"]["sample_count"], 12)
+            self.assertEqual(event["details"]["sample_count"], 16)
             self.assertEqual(event["details"]["status"], "PASSED")
             self.assertEqual(restarted_database.integrity_check(), "ok")
+
+    def test_awareness_uses_only_fresh_generation_for_selected_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = KaiRuntime(
+                KaiConfig(Path(directory)), configure_logging=False
+            )
+            runtime.local_llm_status = lambda: {
+                "provider": "ollama",
+                "model": "qwen2.5:0.5b",
+                "status": "READY",
+                "local_only": True,
+            }
+            runtime.database.initialize()
+            now = datetime.now(timezone.utc)
+
+            def record_request(request_id, model_id, completed_at, outcome):
+                runtime.database.record_llm_request(
+                    {
+                        "request_id": request_id,
+                        "started_at": completed_at,
+                        "completed_at": completed_at,
+                        "duration_ms": 10,
+                        "task_category": "general",
+                        "provider": "ollama",
+                        "model_id": model_id,
+                        "outcome": outcome,
+                        "token_usage": {},
+                        "error_category": None,
+                        "fallback_from": [],
+                    }
+                )
+
+            record_request(
+                "unrelated-model",
+                "qwen2.5:1.5b",
+                now.isoformat(),
+                "SUCCESS",
+            )
+            report = runtime.awareness_status()
+            self.assertEqual(
+                report["capabilities"]["local_model_generation"]["status"],
+                "IMPLEMENTED_UNVERIFIED",
+            )
+
+            stale_time = (now - timedelta(seconds=301)).isoformat()
+            record_request(
+                "stale-selected-model",
+                "qwen2.5:0.5b",
+                stale_time,
+                "SUCCESS",
+            )
+            stale_report = runtime.awareness_status()
+            self.assertEqual(
+                stale_report["capabilities"]["local_model_generation"][
+                    "verification_freshness"
+                ],
+                "STALE",
+            )
+            self.assertEqual(
+                stale_report["capabilities"]["local_model_generation"]["status"],
+                "IMPLEMENTED_UNVERIFIED",
+            )
+
+            record_request(
+                "recent-selected-model",
+                "qwen2.5:0.5b",
+                datetime.now(timezone.utc).isoformat(),
+                "SUCCESS",
+            )
+            verified_report = runtime.awareness_status()
+            self.assertEqual(
+                verified_report["capabilities"]["local_model_generation"]["status"],
+                "VERIFIED",
+            )
+            self.assertFalse(
+                any(
+                    gap["id"] == "local-model-generation-unverified"
+                    for gap in verified_report["knowledge_gaps"]
+                )
+            )
+
+            record_request(
+                "failed-selected-model",
+                "qwen2.5:0.5b",
+                datetime.now(timezone.utc).isoformat(),
+                "FAILED",
+            )
+            failed_report = runtime.awareness_status()
+            self.assertEqual(
+                failed_report["capabilities"]["local_model_generation"]["status"],
+                "FAILED",
+            )
+
+    def test_cloud_generation_does_not_verify_local_generation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = KaiRuntime(
+                KaiConfig(Path(directory), llm_provider="openai"),
+                configure_logging=False,
+            )
+            runtime.local_llm_status = lambda: {
+                "provider": "openai",
+                "model": "gpt-test",
+                "status": "READY",
+                "local_only": False,
+            }
+            runtime.database.initialize()
+            now = datetime.now(timezone.utc).isoformat()
+            runtime.database.record_llm_request(
+                {
+                    "request_id": "cloud-generation",
+                    "started_at": now,
+                    "completed_at": now,
+                    "duration_ms": 10,
+                    "task_category": "general",
+                    "provider": "openai",
+                    "model_id": "gpt-test",
+                    "outcome": "SUCCESS",
+                    "token_usage": {},
+                    "error_category": None,
+                    "fallback_from": [],
+                }
+            )
+
+            report = runtime.awareness_status()
+            self.assertTrue(
+                report["fields"]["language_model.provider_readiness"]["value"][
+                    "generation_verified"
+                ]
+            )
+            self.assertEqual(
+                report["capabilities"]["local_model_generation"]["status"],
+                "UNKNOWN",
+            )
 
 
 if __name__ == "__main__":

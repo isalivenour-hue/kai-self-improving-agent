@@ -184,7 +184,7 @@ class EngineeringDatabaseTests(unittest.TestCase):
             objective="Check v7 upgrade.",
             provider={"provider": "disabled"},
         )
-        self.assertEqual(legacy.schema_version(), 9)
+        self.assertEqual(legacy.schema_version(), 10)
         self.assertEqual(legacy.identity()["identity_id"], identity)
         self.assertEqual(task["status"], "OBJECTIVE")
         self.assertEqual(len(task["events"]), 1)

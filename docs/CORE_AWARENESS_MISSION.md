@@ -40,24 +40,30 @@ that all facts expire at the same rate; it should be refined with evidence.
 `kai awareness status` uses KAI's existing status capture and therefore adds the
 normal environment snapshot and self-model version to append-only history. It
 does not run a test, benchmark, arbitrary discovered tool, model generation,
-or GPU workload. Existing provider status inspection remains subject to the
-existing gateway policies.
+or GPU workload. It consults append-only request metadata after status capture
+to qualify generation claims; it never stores or returns prompt/response text.
+Existing provider status inspection remains subject to the existing gateway
+policies.
 
 ### Capability awareness
 
 Capability status distinguishes declaration, implementation, current
 availability, authorization, and an actual test result:
 
-- `VERIFIED` requires a passed test and positive implementation, availability,
-  and permission evidence.
+- `VERIFIED` requires a passed execution check and positive implementation,
+  availability, and permission evidence. For model generation, only a recent
+  successful request for the exact selected provider/model qualifies, and only
+  for five minutes.
 - `IMPLEMENTED_UNVERIFIED` means implementation and availability are supported,
   but a validating test has not run.
 - `DECLARED_ONLY`, `NOT_IMPLEMENTED`, `UNAVAILABLE`, `BLOCKED`, `FAILED`, and
   `UNKNOWN` remain distinct.
 
-Provider health is not a successful generation test. A discovered binary is
-not evidence that an operation works. A test inventory is not test execution.
-The awareness command does not invoke capabilities merely to test them.
+Provider health alone is not a successful generation test. A request for a
+different model, a stale success, or a recent failure cannot verify current
+generation ability. A discovered binary is not evidence that an operation
+works. A test inventory is not test execution. The awareness command does not
+invoke capabilities merely to test them.
 
 ### Epistemic and provenance rules
 
@@ -167,13 +173,14 @@ The first deterministic contract benchmark is run and persisted by:
 PYTHONPATH=. python3 -m kai awareness benchmark
 ```
 
-Its version 1 fixture set covers eleven outcomes: a verified capability,
+Its version 2 fixture set covers sixteen outcomes: a verified capability,
 implemented-but-untested capability, declared-but-unimplemented capability,
 unavailable capability, permission block, unknown availability, repeated
 hypothesis, unsupported fact, contradiction, current observation, and stale
-observation. It reports exact case count, pass count, case accuracy,
+observation, plus successful, failed, stale, and future-dated generation
+outcomes. It reports exact case count, pass count, case accuracy,
 false-verified-claim count, evidence status, and limitations. The pass condition
-is conformance to all eleven declared deterministic cases; this is an
+is conformance to all sixteen declared deterministic cases; this is an
 engineering contract, not a live-host self-knowledge accuracy score,
 statistical-significance test, confidence calibration, or generalization claim.
 
@@ -183,12 +190,24 @@ historical counterpart. The honest baseline is unavailable. A future version
 must freeze richer independent fixtures before claiming improvements in
 live-state accuracy.
 
+### v1.1 before-and-after evidence
+
+The v1.1 change is compared with commit `27c7995`, immediately before this
+increment. This is a contract-coverage comparison, not evidence of improved
+real-host generation or generalization.
+
+| Metric | Baseline | Current | Cases / samples | Reproduction | Status and limitation |
+|---|---:|---:|---:|---|---|
+| Awareness contract fixtures | 12/12 (100%), v1 | 16/16 (100%), v2 | 12 then 16 deterministic fixtures | `PYTHONPATH=. python3 -m kai awareness benchmark` | PASS; the four new cases cover generation success, failure, stale success, and future timestamps; fixture conformance only. |
+| Selected-model generation report | Always `IMPLEMENTED_UNVERIFIED` | `VERIFIED`, `FAILED`, `IMPLEMENTED_UNVERIFIED`, or `UNKNOWN` based on current, exact-model request evidence | 4 persisted-history scenarios in integration test | `PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_awareness.py' -v` | PASS for deterministic persisted metadata; no live Ollama generation was run. |
+| Full test suite | 178 run, 177 passed, 1 skipped | 181 run, 180 passed, 1 skipped | Full unittest discovery | `PYTHONPATH=. python3 -m unittest discover -s tests -v` | PASS; does not measure live-host capability accuracy. |
+
 ### Eight evaluation dimensions
 
 | Dimension | Initial status | Method / missing prerequisite |
 |---|---|---|
-| 1. State accuracy | Partial fixture coverage | Eleven fixtures exercise evidence and freshness rules; independent live expected-state fixtures and completeness/error metrics remain planned. |
-| 2. Capability-claim accuracy | Implemented contract fixtures | Exercises verified, untested, unavailable, blocked, not-implemented, and unknown states; false verified claims are counted. Broader environment and prior-availability cases remain planned. |
+| 1. State accuracy | Partial fixture coverage | Sixteen fixtures exercise evidence and freshness rules; independent live expected-state fixtures and completeness/error metrics remain planned. |
+| 2. Capability-claim accuracy | Implemented contract fixtures | Exercises verified, untested, unavailable, blocked, not-implemented, unknown, and time-bounded model-generation outcomes; false verified claims are counted. Broader environment and prior-availability cases remain planned. |
 | 3. Epistemic discipline | Implemented contract fixtures | Exercises unsupported facts, repeated hypotheses, and contradictions; independent claim/evidence corpora remain planned. |
 | 4. Freshness and continuity | Partial | Current/stale/future/missing timestamps are classified and benchmark persistence is restart-tested; comprehensive environment-change and interrupted-task restoration evaluation remains planned. |
 | 5. Self-error detection | Planned | Reuse prediction IDs, prior claim/evidence links, correction records, and a conflicting observed outcome; assert history preservation and verified correction. |
@@ -197,7 +216,7 @@ live-state accuracy.
 | 8. Improvement verification | Existing separate framework | Reuse fixed versioned candidate evaluation and held-out evidence; awareness-specific held-out tests and regression coverage remain planned. |
 
 No accuracy target is claimed for live KAI self-reporting. The initial
-contract target is exact adherence to its eleven fixtures. Future target
+contract target is exact adherence to its sixteen fixtures. Future target
 thresholds require a separately frozen baseline and an independent labeled
 dataset. Missing benchmark data must remain `UNKNOWN`; insufficient evidence
 must remain `INCONCLUSIVE`.
@@ -214,9 +233,10 @@ must remain `INCONCLUSIVE`.
   text are added to awareness reports or fixture results.
 - Candidate evaluation is not deployment authorization; no production
   self-modification is implemented.
-- This milestone adds no dependency and no database schema migration. It
-  reuses SQLite schema v9, current self-model snapshots, existing integrity
-  checks, and append-only event storage.
+- Awareness v1 added no dependency or schema migration and reused schema v9.
+  The v1.1 increment adds only a composite index in schema v10 for exact
+  provider/model history lookup; existing history is preserved. No dependency
+  was added.
 
 ## Implementation status and versioned roadmap
 
@@ -224,17 +244,23 @@ must remain `INCONCLUSIVE`.
 
 - Field-level provenance, observation time, five-minute freshness, explicit
   unknown/stale states, and privacy-safe report.
-- Evidence-constrained capability status and an honest no-generation-verification
-  label.
-- Deterministic eleven-case fixture benchmark and append-only result record.
+- Evidence-constrained capability status and deterministic twelve-case
+  fixture benchmark with append-only result record.
 - Evidence-derived stable test, GPU, and benchmark gaps.
 - CLI status/benchmark commands and tests for classification, stale/unknown
   states, privacy filtering, restart persistence, and CLI integration.
 
-### KAI awareness v1.1 — next
+### KAI awareness v1.1 — first increment implemented
 
-- Define independently labeled live-state fixtures for version, schema,
-  configuration, model availability, task lifecycle, and permission state.
+- Current selected provider/model generation status uses its newest persisted
+  request outcome; only a current success verifies capability, recent failure
+  is `FAILED`, and stale success is not reused.
+- Four deterministic fixture cases cover generation success, failure,
+  stale-success, and future-dated outcomes.
+- Schema v10 adds an index for provider/model/completion-time lookup and
+  preserves existing append-only request rows during migration.
+- Independently labeled live-state fixtures for version, schema, configuration,
+  model availability, task lifecycle, and permission state remain planned.
 - Persist explicit test-run records so self-reporting can distinguish a test
   inventory from an actual run and preserve exact outcomes across restarts.
 - Add a gap-detection fixture set with precision/recall and evidence links.

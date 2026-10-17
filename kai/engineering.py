@@ -356,11 +356,18 @@ class EngineeringCoordinator:
                 plan=plan,
                 workspace_id=candidate_workspace["workspace_id"],
             )
+            patch_operation = patch["operation"]
+            patch_content = patch["content"]
+            if patch_operation == "APPEND":
+                candidate_root = self.workspace_manager.path_for(candidate_workspace["workspace_id"])
+                existing = self.workspace_manager._target_path(candidate_root, patch["target_file"]).read_text(encoding="utf-8")
+                patch_operation = "MODIFY"
+                patch_content = existing + patch_content
             modification = self.workspace_manager.apply_change(
                 workspace_id=candidate_workspace["workspace_id"],
                 target_file=patch["target_file"],
-                operation=patch["operation"],
-                content=patch["content"],
+                operation=patch_operation,
+                content=patch_content,
                 reason=patch["reason"],
                 hypothesis_id=lineage["hypothesis_id"],
             )
@@ -463,11 +470,18 @@ class EngineeringCoordinator:
                     failure=self._execution_report(candidate_result),
                     repair_attempt=attempts,
                 )
+                patch_operation = patch["operation"]
+                patch_content = patch["content"]
+                if patch_operation == "APPEND":
+                    candidate_root = self.workspace_manager.path_for(candidate_workspace["workspace_id"])
+                    existing = self.workspace_manager._target_path(candidate_root, patch["target_file"]).read_text(encoding="utf-8")
+                    patch_operation = "MODIFY"
+                    patch_content = existing + patch_content
                 repair_modification = self.workspace_manager.apply_change(
                     workspace_id=candidate_workspace["workspace_id"],
                     target_file=patch["target_file"],
-                    operation=patch["operation"],
-                    content=patch["content"],
+                    operation=patch_operation,
+                    content=patch_content,
                     reason=patch["reason"],
                     hypothesis_id=lineage["hypothesis_id"],
                 )

@@ -154,7 +154,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(benchmark.returncode, 0, benchmark.stderr)
         benchmark_result = json.loads(benchmark.stdout)
         self.assertEqual(benchmark_result["status"], "PASSED")
-        self.assertEqual(benchmark_result["sample_count"], 12)
+        self.assertEqual(benchmark_result["sample_count"], 16)
 
         status = self.run_kai("awareness", "status")
         self.assertEqual(status.returncode, 0, status.stderr)
@@ -163,7 +163,7 @@ class CliTests(unittest.TestCase):
             report["evaluation"]["awareness_benchmark"]["status"], "PASSED"
         )
         self.assertEqual(
-            report["evaluation"]["awareness_benchmark"]["sample_count"], 12
+            report["evaluation"]["awareness_benchmark"]["sample_count"], 16
         )
 
     def test_evaluations_cli_lists_and_shows_baseline_lineage(self):

@@ -475,7 +475,7 @@ class ExperimentPersistenceTests(unittest.TestCase):
             connection.commit()
 
         legacy.initialize()
-        self.assertEqual(legacy.schema_version(), 9)
+        self.assertEqual(legacy.schema_version(), 10)
         self.assertEqual(legacy.list_learning_records()[0]["learning_id"], 14)
         self.assertEqual(legacy.get_prediction(12)["prediction_id"], 12)
         self.assertEqual(legacy.get_experiment_execution(13)["execution_id"], 13)

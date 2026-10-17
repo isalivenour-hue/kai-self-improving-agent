@@ -1789,6 +1789,25 @@ class KaiRuntime:
         benchmark_events = self.database.recent_events(
             limit=1, event_type="AWARENESS_BENCHMARK_COMPLETED"
         )
+        language_model = version["model"].get("language_model", {})
+        provider_name = (
+            language_model.get("provider")
+            if isinstance(language_model, dict)
+            else None
+        )
+        model_id = (
+            language_model.get("model")
+            if isinstance(language_model, dict)
+            else None
+        )
+        latest_model_request = (
+            self.database.latest_llm_request(provider_name, model_id)
+            if isinstance(provider_name, str)
+            and provider_name
+            and isinstance(model_id, str)
+            and model_id
+            else None
+        )
         return build_awareness_report(
             version,
             runtime_status,
@@ -1797,6 +1816,7 @@ class KaiRuntime:
             prediction_status_counts=prediction_status_counts,
             recent_failure_count=recent_failure_count,
             latest_benchmark=benchmark_events[0] if benchmark_events else None,
+            latest_model_request=latest_model_request,
         )
 
     def awareness_benchmark(self) -> dict:

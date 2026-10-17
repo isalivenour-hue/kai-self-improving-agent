@@ -227,7 +227,7 @@ class SelfModelTests(SelfImprovementFixtures):
         first = self.runtime.self_status()
         second = self.runtime.self_status()
         model = second["model"]
-        self.assertEqual(second["schema_version"], 9)
+        self.assertEqual(second["schema_version"], 10)
         self.assertEqual(model["software"]["version"], self.runtime.version)
         self.assertEqual(model["architecture"]["version"], "0.007")
         self.assertTrue(model["source_tree"]["source_snapshot_sha256"])
@@ -784,7 +784,7 @@ class SelfImprovementMigrationTests(unittest.TestCase):
                 connection.execute("UPDATE schema_info SET version = 5")
                 connection.commit()
             legacy.initialize()
-            self.assertEqual(legacy.schema_version(), 9)
+            self.assertEqual(legacy.schema_version(), 10)
             self.assertEqual(legacy.identity()["identity_id"], identity)
             self.assertEqual(legacy.recent_events()[0]["event_id"], 33)
             self.assertEqual(legacy.integrity_check(), "ok")

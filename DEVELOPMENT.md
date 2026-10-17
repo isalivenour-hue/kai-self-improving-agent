@@ -21,14 +21,17 @@ epistemic state, and an initial five-minute freshness limit. The status command
 therefore appends the usual environment snapshot and self-model history record.
 It does not run tests, discovered tools, model generation, GPU workloads, or
 candidate code. User-authored goal/task/prediction contents, raw paths, and
-secrets are omitted.
+secrets are omitted. It does consult immutable model-request history: a recent
+successful request for the exact selected provider/model verifies generation
+for five minutes; stale or unrelated requests do not.
 
-`kai awareness benchmark` evaluates eleven deterministic contract fixtures for
-capability evidence, claim discipline, and freshness, then stores the result
-as an append-only event. The reported 11-case accuracy is fixture conformance,
-not measured live-system awareness accuracy, statistical significance, or
-confidence calibration. The pre-change baseline had no matching awareness
-protocol; it must be recorded as not measurable rather than assigned a score.
+`kai awareness benchmark` evaluates sixteen deterministic contract fixtures
+for capability evidence, claim discipline, generation outcome freshness, and
+observation freshness, then stores the result as an append-only event. The
+reported fixture accuracy is conformance, not measured live-system awareness
+accuracy, statistical significance, or confidence calibration. The pre-change
+baseline had no matching awareness protocol; it must be recorded as not
+measurable rather than assigned a score.
 
 ### Evidence-driven benchmark
 

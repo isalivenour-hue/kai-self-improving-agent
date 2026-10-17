@@ -48,7 +48,7 @@ from kai.self_improvement import (
     validate_self_observation,
 )
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 MAX_LIST_LIMIT = 1000
 IDENTITY_NAME = "KAI"
 IDENTITY_PRINCIPLES = [
@@ -456,6 +456,9 @@ class Database:
                     version = 8
                 if version < 9:
                     self._migrate_to_v9(connection)
+                    version = 9
+                if version < 10:
+                    self._migrate_to_v10(connection)
                 connection.commit()
             except KaiError:
                 connection.rollback()
@@ -1736,6 +1739,16 @@ class Database:
             "UPDATE schema_info SET version = 9 WHERE singleton = 1"
         )
 
+    @staticmethod
+    def _migrate_to_v10(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            "CREATE INDEX llm_request_history_model_latest_idx "
+            "ON llm_request_history(provider, model_id, completed_at DESC, request_id)"
+        )
+        connection.execute(
+            "UPDATE schema_info SET version = 10 WHERE singleton = 1"
+        )
+
     def create_engineering_task(
         self,
         *,
@@ -2013,6 +2026,32 @@ class Database:
             }
             for row in rows
         ]
+
+    def latest_llm_request(self, provider: str, model_id: str) -> dict | None:
+        """Return the newest immutable outcome for the exact provider/model pair."""
+        _validate_llm_target(provider, model_id)
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM llm_request_history "
+                "WHERE provider = ? AND model_id = ? "
+                "ORDER BY completed_at DESC, request_id LIMIT 1",
+                (provider, model_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "request_id": row["request_id"],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+            "duration_ms": row["duration_ms"],
+            "task_category": row["task_category"],
+            "provider": row["provider"],
+            "model_id": row["model_id"],
+            "outcome": row["outcome"],
+            "token_usage": json.loads(row["token_usage_json"]),
+            "error_category": row["error_category"],
+            "fallback_from": json.loads(row["fallback_from_json"]),
+        }
 
     def record_engineering_task_event(
         self,

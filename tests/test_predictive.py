@@ -263,7 +263,7 @@ class PredictiveDatabaseTests(unittest.TestCase):
             )
             connection.commit()
         legacy.initialize()
-        self.assertEqual(legacy.schema_version(), 9)
+        self.assertEqual(legacy.schema_version(), 10)
         self.assertEqual(legacy.identity()["identity_id"], identity_id)
         self.assertEqual(legacy.recent_events()[0]["summary"], "retained")
         self.assertEqual(legacy.integrity_check(), "ok")

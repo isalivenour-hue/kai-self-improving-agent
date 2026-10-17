@@ -90,7 +90,7 @@ class ModelGatewayTests(unittest.TestCase):
             available_memory_bytes=1024,
         )
 
-    def test_schema_v8_upgrade_adds_empty_gateway_state(self):
+    def test_schema_v8_upgrade_preserves_llm_history_and_adds_latest_index(self):
         path = Path(self.temporary_directory.name) / "schema-v8.sqlite3"
         legacy = Database(path)
         with legacy.connection() as connection:
@@ -102,13 +102,50 @@ class ModelGatewayTests(unittest.TestCase):
             connection.execute("INSERT INTO schema_info VALUES (1, 0)")
             for version in range(1, 9):
                 getattr(Database, f"_migrate_to_v{version}")(connection)
+            Database._migrate_to_v9(connection)
             connection.commit()
+        legacy.record_llm_request(
+                {
+                    "request_id": "preserve-across-v10",
+                    "started_at": "2026-10-17T00:00:00+00:00",
+                    "completed_at": "2026-10-17T00:00:01+00:00",
+                    "duration_ms": 1000,
+                    "task_category": "general",
+                    "provider": "ollama",
+                    "model_id": "qwen2.5:0.5b",
+                    "outcome": "SUCCESS",
+                    "token_usage": {},
+                    "error_category": None,
+                    "fallback_from": [],
+                }
+        )
         legacy.initialize()
-        self.assertEqual(legacy.schema_version(), 9)
+        self.assertEqual(legacy.schema_version(), 10)
         self.assertIsNone(legacy.get_llm_model_selection())
         self.assertEqual(legacy.list_llm_task_routes(), [])
         self.assertEqual(legacy.list_llm_fallbacks(), [])
-        self.assertEqual(legacy.list_llm_requests(), [])
+        self.assertEqual(
+            legacy.latest_llm_request("ollama", "qwen2.5:0.5b")["request_id"],
+            "preserve-across-v10",
+        )
+        with legacy.connection() as connection:
+                indexes = {
+                    row["name"]
+                    for row in connection.execute(
+                        "PRAGMA index_list(llm_request_history)"
+                    ).fetchall()
+                }
+                query_plan = connection.execute(
+                    "EXPLAIN QUERY PLAN SELECT * FROM llm_request_history "
+                    "WHERE provider = ? AND model_id = ? "
+                    "ORDER BY completed_at DESC, request_id LIMIT 1",
+                    ("ollama", "qwen2.5:0.5b"),
+                ).fetchall()
+        self.assertIn("llm_request_history_model_latest_idx", indexes)
+        self.assertIn(
+                "llm_request_history_model_latest_idx",
+                " ".join(row["detail"] for row in query_plan),
+        )
 
     def test_ollama_model_discovery_preserves_installed_size_and_capabilities(self):
         from tests.test_local_llm import FakeConnection, FakeResponse

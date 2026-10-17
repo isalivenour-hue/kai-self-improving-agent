@@ -13,7 +13,7 @@ KAI already persists environment snapshots, epistemic claims, self-model
 versions, and source-linked observations. `kai.awareness` builds a privacy-safe
 health report from those records and current database/provider summaries, marks
 unknown and stale observations explicitly, and derives a small set of
-evidence-linked gaps. `kai awareness benchmark` evaluates eleven deterministic
+evidence-linked gaps. `kai awareness benchmark` evaluates sixteen deterministic
 contract fixtures and stores the result in append-only event history. Fixture
 success validates the reporting rules, not the factual accuracy of every
 live-host claim.
@@ -21,8 +21,11 @@ live-host claim.
 The awareness status command uses the existing runtime status capture, which
 persists a fresh environment snapshot and self-model version. It does not
 execute discovered tools, run the test suite or GPU workloads, invoke model
-generation, or authorize actions. Capability availability, permission, and
-test verification remain separate dimensions. See
+generation, or authorize actions. A recent successful request for the exact
+selected provider/model may verify generation for five minutes; stale outcomes,
+provider readiness alone, and unrelated model successes cannot do so.
+Capability availability, permission, and test verification remain separate
+dimensions. See
 [CORE_AWARENESS_MISSION.md](./docs/CORE_AWARENESS_MISSION.md) for semantics,
 benchmark scope, baseline, limitations, and the versioned roadmap.
 

@@ -226,8 +226,9 @@ goal, not a claim of consciousness.
 - Capability status distinguishes implementation, availability, permission,
   and test execution. Provider readiness and test-source inventory do not
   imply successful inference or test execution.
-- Added `kai awareness benchmark`, an eleven-case deterministic fixture
-  evaluation of capability, epistemic, and freshness contracts. Results are
+- Added `kai awareness benchmark`, a sixteen-case deterministic fixture
+  evaluation of capability, epistemic, generation-outcome, and freshness
+  contracts. Results are
   persisted as append-only `AWARENESS_BENCHMARK_COMPLETED` events.
 - Added evidence-linked stable gaps for unrun tests, unverified GPU usability,
   and missing awareness evaluation. The report omits secrets, raw paths,
@@ -237,6 +238,18 @@ goal, not a claim of consciousness.
 - The fixture suite verifies reporting rules, not full live-host accuracy or
   generalization. The pre-implementation dedicated awareness benchmark was
   unavailable because no protocol existed.
+
+### KAI awareness v1.1 first increment (implemented)
+
+- Awareness now joins the selected provider/model's newest immutable
+  generation outcome to the capability report. Only a current outcome within
+  five minutes counts; an older success becomes unverified, and a recent
+  failure is reported as failed.
+- A successful outcome for another model cannot verify the selected model.
+- The version 2 deterministic fixture suite includes successful, failed,
+  stale-success, and future-dated generation evidence cases.
+- Added SQLite schema v10 with a composite provider/model/time index for
+  bounded-time latest-outcome lookup; existing request history is preserved.
 
 See [CORE_AWARENESS_MISSION.md](./docs/CORE_AWARENESS_MISSION.md) for the
 baseline, evaluation methods, limitations, and remaining work.

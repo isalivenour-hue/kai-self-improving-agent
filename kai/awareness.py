@@ -7,7 +7,7 @@ from typing import Any
 
 
 AWARENESS_BENCHMARK_ID = "operational-awareness-contract"
-AWARENESS_BENCHMARK_VERSION = 1
+AWARENESS_BENCHMARK_VERSION = 2
 DEFAULT_FRESHNESS_SECONDS = 300
 
 
@@ -41,6 +41,50 @@ def observation_freshness(
     if age > maximum_age_seconds:
         return "STALE"
     return "CURRENT"
+
+
+def classify_generation_evidence(
+    latest_request: dict | None,
+    *,
+    now: datetime,
+    maximum_age_seconds: int = DEFAULT_FRESHNESS_SECONDS,
+) -> dict:
+    """Use only a recent, well-formed generation outcome as execution evidence."""
+    if latest_request is None:
+        return {
+            "test_status": "NOT_RUN",
+            "freshness": "UNKNOWN",
+            "completed_at": None,
+        }
+    if not isinstance(latest_request, dict):
+        return {
+            "test_status": "UNKNOWN",
+            "freshness": "UNKNOWN",
+            "completed_at": None,
+        }
+
+    completed_at = latest_request.get("completed_at")
+    freshness = observation_freshness(
+        completed_at,
+        now=now,
+        maximum_age_seconds=maximum_age_seconds,
+    )
+    if freshness == "STALE":
+        test_status = "NOT_RUN"
+    elif freshness != "CURRENT":
+        test_status = "UNKNOWN"
+    elif latest_request.get("outcome") == "SUCCESS":
+        test_status = "PASSED"
+    elif latest_request.get("outcome") == "FAILED":
+        test_status = "FAILED"
+    else:
+        freshness = "UNKNOWN"
+        test_status = "UNKNOWN"
+    return {
+        "test_status": test_status,
+        "freshness": freshness,
+        "completed_at": completed_at if isinstance(completed_at, str) else None,
+    }
 
 
 def assess_capability(
@@ -182,6 +226,7 @@ def derive_knowledge_gaps(
     gpu_epistemic_status: str,
     benchmark_status: str | None,
     self_model_version_id: int | None,
+    generation_status: str = "UNKNOWN",
 ) -> list[dict]:
     gaps = []
     if test_execution_status == "UNKNOWN":
@@ -226,26 +271,31 @@ def derive_knowledge_gaps(
                 self_model_version_id=self_model_version_id,
             )
         )
-    gaps.append(
-        _gap(
-            "local-model-generation-unverified",
-            "Provider readiness is not linked to a successful model generation test.",
-            severity="LOW",
-            rationale="Provider health and model discovery do not prove successful inference.",
-            component="local_model_gateway",
-            evidence=["language_model.generation_verified=false"],
-            evidence_status="OBSERVED",
-            corrective_experiment=(
-                "Run the explicit bounded local gateway connection test and retain "
-                "its sanitized result metadata."
-            ),
-            acceptance_criterion=(
-                "A successful explicitly invoked generation is linked to the active "
-                "provider/model and current environment without storing prompt or output."
-            ),
-            self_model_version_id=self_model_version_id,
+    if generation_status != "VERIFIED":
+        gaps.append(
+            _gap(
+                "local-model-generation-unverified",
+                "The selected model has no current successful generation verification.",
+                severity="LOW",
+                rationale=(
+                    "Provider readiness alone or a stale generation outcome cannot "
+                    "establish current generation ability."
+                ),
+                component="local_model_gateway",
+                evidence=[f"selected_model_generation.status={generation_status}"],
+                evidence_status=(
+                    generation_status if generation_status != "UNKNOWN" else "UNKNOWN"
+                ),
+                corrective_experiment=(
+                    "Run the explicit bounded `kai llm test` against the selected model."
+                ),
+                acceptance_criterion=(
+                    "A successful generation outcome is recorded for the selected "
+                    "provider/model within the five-minute verification window."
+                ),
+                self_model_version_id=self_model_version_id,
+            )
         )
-    )
     if benchmark_status != "PASSED":
         gaps.append(
             _gap(
@@ -280,6 +330,7 @@ def build_awareness_report(
     prediction_status_counts: dict[str, int],
     recent_failure_count: int,
     latest_benchmark: dict | None,
+    latest_model_request: dict | None = None,
     now: datetime | None = None,
 ) -> dict:
     """Build a bounded report from the latest persisted model and live summaries."""
@@ -300,6 +351,24 @@ def build_awareness_report(
     test_execution = test_suite.get("execution_status", "UNKNOWN")
     if test_execution not in {"PASSED", "FAILED"}:
         test_execution = "UNKNOWN"
+    generation_evidence = classify_generation_evidence(
+        latest_model_request, now=now
+    )
+    generation_test_status = generation_evidence["test_status"]
+    provider_status = language_model.get("status", "UNKNOWN")
+    local_provider_selected = language_model.get("provider") == "ollama"
+    local_generation_test_status = "NOT_RUN"
+    local_generation_available = None
+    local_generation_permission = "UNKNOWN"
+    if local_provider_selected:
+        local_generation_test_status = generation_test_status
+        if provider_status == "READY":
+            local_generation_available = True
+        elif provider_status in {"RUNTIME_UNAVAILABLE", "MODEL_NOT_INSTALLED"}:
+            local_generation_available = False
+        local_generation_permission = (
+            "BLOCKED" if provider_status == "DISABLED" else "ALLOWED"
+        )
 
     fields = {
         "identity.name": _field(
@@ -342,13 +411,31 @@ def build_awareness_report(
         "language_model.provider_readiness": _field(
             {
                 "provider": language_model.get("provider"),
-                "status": language_model.get("status", "UNKNOWN"),
+                "status": provider_status,
                 "local_only": language_model.get("local_only"),
-                "generation_verified": False,
+                "generation_verified": generation_test_status == "PASSED",
             },
-            source="Provider status inspection; no generation request issued",
+            source="Provider status inspection and bounded generation history",
             observed_at=observed_at,
             now=now,
+        ),
+        "language_model.generation": _field(
+            {
+                "status": generation_test_status,
+                "freshness": generation_evidence["freshness"],
+                "completed_at": generation_evidence["completed_at"],
+            },
+            source=(
+                "Latest append-only generation outcome for the selected "
+                "provider/model; limited to the current freshness window"
+            ),
+            observed_at=generation_evidence["completed_at"] or observed_at,
+            now=now,
+            epistemic_status=(
+                "OBSERVED"
+                if generation_test_status in {"PASSED", "FAILED"}
+                else "UNKNOWN"
+            ),
         ),
         "gpu.compute_usability": _field(
             gpu_state,
@@ -401,14 +488,21 @@ def build_awareness_report(
         "local_model_generation": {
             "declared": True,
             "implemented": True,
-            "available": (
-                True if language_model.get("status") == "READY"
-                else False if language_model.get("status") in {"UNAVAILABLE", "ERROR"}
-                else None
+            "available": local_generation_available,
+            "permission": local_generation_permission,
+            "test_status": local_generation_test_status,
+            "verification_freshness": (
+                generation_evidence["freshness"] if local_provider_selected else "UNKNOWN"
             ),
-            "permission": "ALLOWED",
-            "test_status": "NOT_RUN",
-            "source": "Provider status only; generation was not invoked.",
+            "verification_completed_at": (
+                generation_evidence["completed_at"] if local_provider_selected else None
+            ),
+            "source": (
+                "Selected local provider readiness and its most recent matching "
+                "generation outcome; stale outcomes do not verify current ability."
+                if local_provider_selected
+                else "A non-local provider is selected; local runtime readiness was not checked."
+            ),
         },
         "candidate_sandbox_execution": {
             "declared": True,
@@ -471,6 +565,7 @@ def build_awareness_report(
         gpu_epistemic_status=gpu_epistemic,
         benchmark_status=benchmark_status,
         self_model_version_id=version_id,
+        generation_status=capabilities["local_model_generation"]["status"],
     )
 
     state_counts = {
@@ -590,6 +685,48 @@ def run_awareness_benchmark() -> dict:
                 test_status="NOT_RUN",
             ),
             "IMPLEMENTED_UNVERIFIED",
+        ),
+        (
+            "recent-generation-success",
+            classify_generation_evidence(
+                {"completed_at": now.isoformat(), "outcome": "SUCCESS"},
+                now=now,
+            )["test_status"],
+            "PASSED",
+        ),
+        (
+            "recent-generation-failure",
+            classify_generation_evidence(
+                {"completed_at": now.isoformat(), "outcome": "FAILED"},
+                now=now,
+            )["test_status"],
+            "FAILED",
+        ),
+        (
+            "stale-generation-success",
+            classify_generation_evidence(
+                {
+                    "completed_at": (
+                        now - timedelta(seconds=DEFAULT_FRESHNESS_SECONDS + 1)
+                    ).isoformat(),
+                    "outcome": "SUCCESS",
+                },
+                now=now,
+            )["test_status"],
+            "NOT_RUN",
+        ),
+        (
+            "future-generation-success",
+            classify_generation_evidence(
+                {
+                    "completed_at": (
+                        now + timedelta(seconds=DEFAULT_FRESHNESS_SECONDS + 1)
+                    ).isoformat(),
+                    "outcome": "SUCCESS",
+                },
+                now=now,
+            )["test_status"],
+            "UNKNOWN",
         ),
         (
             "declared-not-implemented",
